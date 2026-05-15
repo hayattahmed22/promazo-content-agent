@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import Anthropic from "@anthropic-ai/sdk";
 import { YoutubeTranscript } from "youtube-transcript";
+import fs from "fs";
+import path from "path";
 
 const anthropic = new Anthropic({
   apiKey: process.env.ANTHROPIC_API_KEY,
@@ -8,12 +10,14 @@ const anthropic = new Anthropic({
 
 export async function POST(req: NextRequest) {
   try {
-    const body = await req.json();
-    const { videoUrl, fileName } = body;
+    const formData = await req.formData();
 
-    if (!videoUrl && !fileName) {
+    const file = formData.get("file") as File | null;
+    const videoUrl = formData.get("videoUrl") as string | null;
+
+    if (!file && !videoUrl) {
       return NextResponse.json(
-        { error: "Please provide a video link or upload." },
+        { error: "Please upload a video or paste a video link." },
         { status: 400 }
       );
     }
@@ -25,24 +29,44 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    if (!videoUrl) {
+    if (file) {
+      const uploadsDir = path.join(process.cwd(), "uploads");
+
+      if (!fs.existsSync(uploadsDir)) {
+        fs.mkdirSync(uploadsDir);
+      }
+
+      const bytes = await file.arrayBuffer();
+      const buffer = Buffer.from(bytes);
+
+      const filePath = path.join(uploadsDir, file.name);
+      fs.writeFileSync(filePath, buffer);
+
       return NextResponse.json({
         clips: [
           {
-            title: "MP4 upload detected",
+            title: "Uploaded MP4 received",
             timestamp: "Needs transcription integration",
-            snippet: "Uploaded MP4 received successfully.",
+            snippet: "The uploaded video was saved successfully.",
             reason:
-              "MP4 upload is working, but we still need a transcription API to analyze uploaded videos.",
-            caption: "MP4 upload workflow is ready for transcription.",
-            hashtags: ["#AIWorkflow", "#PodcastClips"],
+              "The MP4 upload is now working. Next step is connecting Whisper/AssemblyAI to transcribe the uploaded video before Claude analyzes it.",
+            caption:
+              "This uploaded podcast is ready for transcription and short-form clip generation.",
+            hashtags: ["#AIWorkflow", "#PodcastClips", "#ContentAgent"],
             viralScore: 80,
           },
         ],
       });
     }
 
-    const transcriptItems = await YoutubeTranscript.fetchTranscript(videoUrl);
+    if (!videoUrl) {
+  return NextResponse.json(
+    { error: "Video URL is required." },
+    { status: 400 }
+  );
+}
+
+const transcriptItems = await YoutubeTranscript.fetchTranscript(videoUrl);
 
     const transcript = transcriptItems
       .map((item) => `[${Math.floor(item.offset / 1000)}s] ${item.text}`)
@@ -62,7 +86,7 @@ Return ONLY valid JSON in this exact format:
       "timestamp": "",
       "snippet": "",
       "reason": "",
-      "caption": "",
+      "caption": "One short viral hook sentence only",
       "hashtags": ["", "", ""],
       "viralScore": 0
     }
@@ -73,20 +97,23 @@ Rules:
 - Pick emotionally engaging, insightful, controversial, surprising, or highly actionable moments.
 - The snippet must be a REAL quote from the transcript.
 - Titles should feel like viral hooks.
-- Caption should sound natural for TikTok/Reels.
+- Caption must be ONLY ONE short punchy sentence.
+- Caption should feel like a viral hook for TikTok/Reels/Shorts.
+- Do NOT make captions longer than 15 words.
+- Make captions emotionally engaging and curiosity-driven.
 - Do not invent information outside the transcript.
 
 Viral score instructions:
 Score each clip from 1 to 100 based on:
-- Hook strength: does it grab attention quickly?
-- Clarity: can someone understand it without watching the full podcast?
-- Emotional impact: does it feel surprising, inspiring, funny, intense, or relatable?
-- Practical value: does the viewer learn something useful?
-- Shareability: would someone repost/save/send it?
-- Short-form fit: does it work well as a 30–60 second TikTok/Reel/Short?
+- Hook strength
+- Clarity
+- Emotional impact
+- Practical value
+- Shareability
+- Short-form fit
 
-Use different scores for each clip. Do not give every clip the same score.
-Only give high scores above 90 if the moment is genuinely very strong.
+Use different scores for each clip.
+Only give scores above 90 if the moment is genuinely very strong.
 
 Transcript:
 ${transcript.slice(0, 12000)}
@@ -123,7 +150,7 @@ ${transcript.slice(0, 12000)}
     return NextResponse.json(
       {
         error:
-          "Could not analyze this video. Make sure it is a YouTube link with captions available, or use MP4 upload for placeholder mode.",
+          "Could not analyze this video. Try a YouTube link with captions, or upload an MP4.",
       },
       { status: 500 }
     );

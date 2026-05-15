@@ -13,13 +13,14 @@ type Clip = {
 };
 
 export default function Home() {
+  const [file, setFile] = useState<File | null>(null);
   const [fileName, setFileName] = useState("");
   const [videoLink, setVideoLink] = useState("");
   const [loading, setLoading] = useState(false);
   const [clips, setClips] = useState<Clip[]>([]);
 
   const analyzeContent = async () => {
-    if (!fileName && !videoLink.trim()) {
+    if (!file && !videoLink.trim()) {
       alert("Please upload a video or paste a video link first.");
       return;
     }
@@ -28,15 +29,17 @@ export default function Home() {
     setClips([]);
 
     try {
+      const formData = new FormData();
+
+      if (file) {
+        formData.append("file", file);
+      }
+
+      formData.append("videoUrl", videoLink);
+
       const response = await fetch("/api/analyze", {
         method: "POST",
-        body: JSON.stringify({
-          fileName,
-          videoUrl: videoLink,
-        }),
-        headers: {
-          "Content-Type": "application/json",
-        },
+        body: formData,
       });
 
       const data = await response.json();
@@ -54,38 +57,34 @@ export default function Home() {
   return (
     <main className="min-h-screen bg-black p-10 text-white">
       <div className="mx-auto max-w-6xl">
-        <h1 className="text-5xl font-bold">
-          ProMazo Content Agent
-        </h1>
+        <h1 className="text-5xl font-bold">ProMazo Content Agent</h1>
 
         <p className="mt-4 text-lg text-gray-400">
-          AI-powered workflow for turning long-form podcasts
-          into short-form social content.
+          AI-powered workflow for turning long-form podcasts into short-form
+          social content.
         </p>
 
         <div className="mt-10 rounded-3xl border border-gray-800 bg-[#111111] p-8">
-          <h2 className="text-2xl font-semibold">
-            Upload or Analyze Podcast
-          </h2>
+          <h2 className="text-2xl font-semibold">Upload or Analyze Podcast</h2>
 
           <p className="mt-2 text-gray-500">
-            Upload an MP4 or paste a podcast/video link to generate
-            AI-powered short-form content suggestions.
+            Upload an MP4 or paste a podcast/video link to generate AI-powered
+            short-form content suggestions.
           </p>
 
           <div className="mt-8 flex flex-col gap-5">
             <label className="w-fit cursor-pointer rounded-2xl bg-white px-6 py-3 font-semibold text-black transition hover:opacity-90">
               Upload MP4
-
               <input
                 type="file"
                 accept="video/mp4"
                 className="hidden"
                 onChange={(e) => {
-                  const file = e.target.files?.[0];
+                  const selectedFile = e.target.files?.[0];
 
-                  if (file) {
-                    setFileName(file.name);
+                  if (selectedFile) {
+                    setFile(selectedFile);
+                    setFileName(selectedFile.name);
                     setVideoLink("");
                   }
                 }}
@@ -98,6 +97,7 @@ export default function Home() {
               value={videoLink}
               onChange={(e) => {
                 setVideoLink(e.target.value);
+                setFile(null);
                 setFileName("");
               }}
               className="max-w-3xl rounded-2xl border border-gray-700 bg-[#1a1a1a] px-5 py-4 text-white outline-none"
@@ -112,9 +112,7 @@ export default function Home() {
           </div>
 
           {fileName && (
-            <p className="mt-5 text-green-400">
-              Uploaded File: {fileName}
-            </p>
+            <p className="mt-5 text-green-400">Uploaded File: {fileName}</p>
           )}
 
           {videoLink && (
@@ -157,9 +155,7 @@ export default function Home() {
 
                   <div className="mt-5 h-44 rounded-2xl bg-gradient-to-br from-gray-800 to-gray-900" />
 
-                  <h3 className="mt-5 text-2xl font-semibold">
-                    {clip.title}
-                  </h3>
+                  <h3 className="mt-5 text-2xl font-semibold">{clip.title}</h3>
 
                   <p className="mt-2 text-gray-400">
                     Timestamp: {clip.timestamp}
@@ -172,7 +168,7 @@ export default function Home() {
                       </p>
 
                       <p className="mt-2 italic text-gray-400">
-                        "{clip.snippet}"
+                        &quot;{clip.snippet}&quot;
                       </p>
                     </div>
                   )}
@@ -182,9 +178,7 @@ export default function Home() {
                       Why AI selected this clip:
                     </p>
 
-                    <p className="mt-2 text-gray-400">
-                      {clip.reason}
-                    </p>
+                    <p className="mt-2 text-gray-400">{clip.reason}</p>
                   </div>
 
                   <div className="mt-5">
@@ -192,9 +186,7 @@ export default function Home() {
                       Generated Caption
                     </p>
 
-                    <p className="mt-2 text-gray-400">
-                      {clip.caption}
-                    </p>
+                    <p className="mt-2 text-gray-400">{clip.caption}</p>
                   </div>
 
                   <div className="mt-5 flex flex-wrap gap-2">
