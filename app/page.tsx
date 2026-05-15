@@ -5,9 +5,11 @@ import { useState } from "react";
 type Clip = {
   title: string;
   timestamp: string;
+  snippet?: string;
   reason: string;
   caption: string;
   hashtags: string[];
+  viralScore: number;
 };
 
 export default function Home() {
@@ -39,6 +41,8 @@ export default function Home() {
 
       const data = await response.json();
 
+      console.log(data);
+
       setClips(data.clips || []);
       setLoading(false);
     } catch (error) {
@@ -50,11 +54,13 @@ export default function Home() {
   return (
     <main className="min-h-screen bg-black p-10 text-white">
       <div className="mx-auto max-w-6xl">
-        <h1 className="text-5xl font-bold">ProMazo Content Agent</h1>
+        <h1 className="text-5xl font-bold">
+          ProMazo Content Agent
+        </h1>
 
         <p className="mt-4 text-lg text-gray-400">
-          AI-powered workflow for turning long-form podcasts into short-form
-          social content.
+          AI-powered workflow for turning long-form podcasts
+          into short-form social content.
         </p>
 
         <div className="mt-10 rounded-3xl border border-gray-800 bg-[#111111] p-8">
@@ -63,13 +69,14 @@ export default function Home() {
           </h2>
 
           <p className="mt-2 text-gray-500">
-            Upload an MP4 or paste a podcast/video link to generate AI-powered
-            short-form content suggestions.
+            Upload an MP4 or paste a podcast/video link to generate
+            AI-powered short-form content suggestions.
           </p>
 
           <div className="mt-8 flex flex-col gap-5">
             <label className="w-fit cursor-pointer rounded-2xl bg-white px-6 py-3 font-semibold text-black transition hover:opacity-90">
               Upload MP4
+
               <input
                 type="file"
                 accept="video/mp4"
@@ -87,7 +94,7 @@ export default function Home() {
 
             <input
               type="url"
-              placeholder="Paste YouTube or podcast link..."
+              placeholder="Paste YouTube, Drive, or podcast link..."
               value={videoLink}
               onChange={(e) => {
                 setVideoLink(e.target.value);
@@ -120,7 +127,7 @@ export default function Home() {
             <div className="mt-8 rounded-2xl border border-yellow-700 bg-yellow-900/20 p-5">
               <p className="text-yellow-300">
                 AI workflow is analyzing video, detecting key moments,
-                generating captions, and scoring clip performance...
+                generating captions, and scoring virality...
               </p>
             </div>
           )}
@@ -140,7 +147,7 @@ export default function Home() {
                 >
                   <div className="flex items-center justify-between">
                     <span className="rounded-full bg-blue-600 px-3 py-1 text-sm font-semibold">
-                      Viral Potential: 92%
+                      Viral Potential: {clip.viralScore}%
                     </span>
 
                     <span className="text-sm text-gray-400">
@@ -157,6 +164,18 @@ export default function Home() {
                   <p className="mt-2 text-gray-400">
                     Timestamp: {clip.timestamp}
                   </p>
+
+                  {clip.snippet && (
+                    <div className="mt-5 rounded-2xl border border-gray-700 bg-[#181818] p-4">
+                      <p className="text-sm font-semibold text-gray-300">
+                        Transcript Snippet
+                      </p>
+
+                      <p className="mt-2 italic text-gray-400">
+                        "{clip.snippet}"
+                      </p>
+                    </div>
+                  )}
 
                   <div className="mt-5">
                     <p className="text-sm font-semibold text-gray-300">

@@ -31,10 +31,12 @@ export async function POST(req: NextRequest) {
           {
             title: "MP4 upload detected",
             timestamp: "Needs transcription integration",
+            snippet: "Uploaded MP4 received successfully.",
             reason:
               "MP4 upload is working, but we still need a transcription API to analyze uploaded videos.",
             caption: "MP4 upload workflow is ready for transcription.",
             hashtags: ["#AIWorkflow", "#PodcastClips"],
+            viralScore: 80,
           },
         ],
       });
@@ -47,35 +49,59 @@ export async function POST(req: NextRequest) {
       .join("\n");
 
     const prompt = `
-Analyze this transcript and generate 3 short-form clip suggestions.
+You are an expert AI content strategist for TikTok, Reels, and YouTube Shorts.
 
-Return ONLY valid JSON exactly like this:
+Analyze this podcast transcript and identify the 3 BEST short-form moments.
+
+Return ONLY valid JSON in this exact format:
+
 {
   "clips": [
     {
       "title": "",
       "timestamp": "",
+      "snippet": "",
       "reason": "",
       "caption": "",
-      "hashtags": ["", ""]
+      "hashtags": ["", "", ""],
+      "viralScore": 0
     }
   ]
 }
+
+Rules:
+- Pick emotionally engaging, insightful, controversial, surprising, or highly actionable moments.
+- The snippet must be a REAL quote from the transcript.
+- Titles should feel like viral hooks.
+- Caption should sound natural for TikTok/Reels.
+- Do not invent information outside the transcript.
+
+Viral score instructions:
+Score each clip from 1 to 100 based on:
+- Hook strength: does it grab attention quickly?
+- Clarity: can someone understand it without watching the full podcast?
+- Emotional impact: does it feel surprising, inspiring, funny, intense, or relatable?
+- Practical value: does the viewer learn something useful?
+- Shareability: would someone repost/save/send it?
+- Short-form fit: does it work well as a 30–60 second TikTok/Reel/Short?
+
+Use different scores for each clip. Do not give every clip the same score.
+Only give high scores above 90 if the moment is genuinely very strong.
 
 Transcript:
 ${transcript.slice(0, 12000)}
 `;
 
     const message = await anthropic.messages.create({
-  model: "claude-haiku-4-5",
-  max_tokens: 1200,
-  messages: [
-    {
-      role: "user",
-      content: prompt,
-    },
-  ],
-});
+      model: "claude-haiku-4-5",
+      max_tokens: 1200,
+      messages: [
+        {
+          role: "user",
+          content: prompt,
+        },
+      ],
+    });
 
     const textBlock = message.content.find((block) => block.type === "text");
 
