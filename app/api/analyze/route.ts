@@ -221,32 +221,14 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // Google Drive Safe Fallback
+    // Google Drive: signal frontend to use Vizard pipeline
     if (
       videoUrl.includes("drive.google.com")
     ) {
       return NextResponse.json({
-        clips: [
-          {
-            title: "Google Drive link received",
-            timestamp: "00:00:05 - 00:00:20",
-            startTime: "00:00:05",
-            endTime: "00:00:20",
-            inputVideo: videoUrl,
-            snippet:
-              "Drive link accepted safely.",
-            reason:
-              "Google Drive links are supported in safe mode for this MVP.",
-            caption:
-              "Upload the MP4 for full AI analysis.",
-            hashtags: [
-              "#AIWorkflow",
-              "#PodcastClips",
-              "#ContentAgent",
-            ],
-            viralScore: 80,
-          },
-        ],
+        source: "google_drive",
+        videoUrl,
+        clips: [],
       });
     }
 
