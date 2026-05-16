@@ -1,6 +1,12 @@
 "use client";
 
-import { useState } from "react";
+import { useState, type ChangeEvent } from "react";
+import { motion, AnimatePresence } from "framer-motion";
+import { Sparkles } from "lucide-react";
+import { Header } from "@/components/header";
+import { UploadSection } from "@/components/upload-section";
+import { StatusBanner } from "@/components/status-banner";
+import { ClipCard } from "@/components/clip-card";
 
 type Clip = {
   title: string;
@@ -65,24 +71,22 @@ export default function Home() {
     }
   };
 
-  const findProjectId = (data: any) => {
+  const findProjectId = (data: Record<string, unknown>) => {
+    const d = data as Record<string, unknown>;
+    const nested = (d.data ?? d.result ?? {}) as Record<string, unknown>;
     return (
-      data.projectId ||
-      data.data?.projectId ||
-      data.result?.projectId ||
-      data.project_id ||
-      data.data?.project_id
+      d.projectId ?? nested.projectId ?? d.project_id ?? nested.project_id
     );
   };
 
-  const findVizardClips = (data: any) => {
+  const findVizardClips = (data: Record<string, unknown>) => {
+    const d = data as Record<string, unknown>;
+    const nested = (d.data ?? d.result ?? {}) as Record<string, unknown>;
     return (
-      data.videos ||
-      data.clips ||
-      data.data?.videos ||
-      data.data?.clips ||
-      data.result?.videos ||
-      data.result?.clips ||
+      (d.videos as VizardClip[]) ??
+      (d.clips as VizardClip[]) ??
+      (nested.videos as VizardClip[]) ??
+      (nested.clips as VizardClip[]) ??
       []
     );
   };
@@ -164,213 +168,136 @@ export default function Home() {
 
   const copyText = async (text: string) => {
     await navigator.clipboard.writeText(text);
-    alert("Copied!");
   };
 
+  const handleFileChange = (e: ChangeEvent<HTMLInputElement>) => {
+    const selectedFile = e.target.files?.[0];
+    if (selectedFile) {
+      setFile(selectedFile);
+      setFileName(selectedFile.name);
+      setVideoLink("");
+    }
+  };
+
+  const handleLinkChange = (value: string) => {
+    setVideoLink(value);
+    setFile(null);
+    setFileName("");
+  };
+
+  // Only show top 3 clips sorted by viral score
+  const topClips = [...clips]
+    .sort((a, b) => b.viralScore - a.viralScore)
+    .slice(0, 3);
+
   return (
-    <main className="min-h-screen bg-black p-10 text-white">
-      <div className="mx-auto max-w-6xl">
-        <h1 className="text-5xl font-bold">ProMazo Content Agent</h1>
+    <div className="min-h-screen bg-background">
+      <Header />
 
-        <p className="mt-4 text-lg text-gray-400">
-          AI-powered workflow for turning long-form podcasts into short-form social content.
-        </p>
-
-        <div className="mt-10 rounded-3xl border border-gray-800 bg-[#111111] p-8">
-          <h2 className="text-2xl font-semibold">Upload or Analyze Podcast</h2>
-
-          <p className="mt-2 text-gray-500">
-            Upload an MP4 or paste a podcast/video link to generate AI-powered short-form content suggestions.
+      <main className="mx-auto max-w-7xl px-6 py-10">
+        {/* Hero section */}
+        <motion.div
+          initial={{ opacity: 0, y: -10 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.5 }}
+          className="mb-10"
+        >
+          <h1 className="text-balance text-4xl font-bold tracking-tight text-foreground sm:text-5xl">
+            Podcast to Viral Shorts
+          </h1>
+          <p className="mt-3 max-w-2xl text-pretty text-base leading-relaxed text-muted-foreground">
+            AI-powered workflow for turning long-form podcasts into short-form
+            social content. Upload, analyze, and generate platform-ready clips
+            in minutes.
           </p>
+        </motion.div>
 
-          <div className="mt-8 flex flex-col gap-5">
-            <label className="w-fit cursor-pointer rounded-2xl bg-white px-6 py-3 font-semibold text-black">
-              Upload MP4
-              <input
-                type="file"
-                accept="video/mp4"
-                className="hidden"
-                onChange={(e) => {
-                  const selectedFile = e.target.files?.[0];
+        {/* Upload section */}
+        <motion.div
+          initial={{ opacity: 0, y: 10 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.5, delay: 0.1 }}
+        >
+          <UploadSection
+            file={file}
+            fileName={fileName}
+            videoLink={videoLink}
+            loading={loading}
+            onFileChange={handleFileChange}
+            onLinkChange={handleLinkChange}
+            onAnalyze={analyzeContent}
+          />
+        </motion.div>
 
-                  if (selectedFile) {
-                    setFile(selectedFile);
-                    setFileName(selectedFile.name);
-                    setVideoLink("");
-                  }
-                }}
-              />
-            </label>
-
-            <input
-              type="url"
-              placeholder="Paste YouTube, Drive, or podcast link..."
-              value={videoLink}
-              onChange={(e) => {
-                setVideoLink(e.target.value);
-                setFile(null);
-                setFileName("");
-              }}
-              className="max-w-3xl rounded-2xl border border-gray-700 bg-[#1a1a1a] px-5 py-4 text-white outline-none"
-            />
-
-            <button
-              onClick={analyzeContent}
-              disabled={loading}
-              className="w-fit rounded-2xl bg-blue-600 px-6 py-3 font-semibold disabled:opacity-50"
-            >
-              {loading ? "Analyzing..." : "Generate AI Clip Suggestions"}
-            </button>
-          </div>
-
-          {fileName && (
-            <p className="mt-5 text-green-400">Uploaded File: {fileName}</p>
-          )}
-
-          {videoLink && (
-            <p className="mt-5 text-green-400">Video Link Added Successfully</p>
-          )}
-
-          {loading && (
-            <div className="mt-8 rounded-2xl border border-yellow-700 bg-yellow-900/20 p-5">
-              <p className="text-yellow-300">AI is analyzing the content...</p>
-            </div>
-          )}
-
-          {(vizardLoading || vizardStatus) && (
-            <div className="mt-8 rounded-2xl border border-blue-700 bg-blue-900/20 p-5">
-              <p className="text-blue-300">{vizardStatus}</p>
-            </div>
-          )}
+        {/* Status banners */}
+        <div className="mt-6">
+          <StatusBanner
+            loading={loading}
+            vizardLoading={vizardLoading}
+            vizardStatus={vizardStatus}
+          />
         </div>
 
-        {clips.length > 0 && (
-          <div className="mt-10">
-            <h2 className="text-3xl font-bold">AI Generated Clip Suggestions</h2>
+        {/* Clip results */}
+        <AnimatePresence>
+          {topClips.length > 0 && (
+            <motion.section
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              className="mt-10"
+            >
+              <div className="mb-6 flex items-center gap-3">
+                <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-accent/10">
+                  <Sparkles className="h-4 w-4 text-accent" />
+                </div>
+                <div>
+                  <h2 className="text-2xl font-bold text-foreground">
+                    Top AI Clip Suggestions
+                  </h2>
+                  <p className="text-sm text-muted-foreground">
+                    Showing the {topClips.length} highest-scoring moments from
+                    your content
+                  </p>
+                </div>
+              </div>
 
-            <div className="mt-6 grid gap-6 md:grid-cols-2">
-              {clips.map((clip, index) => {
-                const vizardClip = vizardClips[index];
-                const vizardUrl =
-                  vizardClip?.videoUrl || vizardClip?.downloadUrl || vizardClip?.url;
+              <div className="grid gap-6 lg:grid-cols-3">
+                {topClips.map((clip, index) => {
+                  const originalIndex = clips.indexOf(clip);
+                  const vizardClip = vizardClips[originalIndex];
 
-                return (
-                  <div
-                    key={index}
-                    className="rounded-3xl border border-gray-800 bg-[#111111] p-6"
-                  >
-                    <div className="flex items-center justify-between">
-                      <span className="rounded-full bg-blue-600 px-3 py-1 text-sm font-semibold">
-                        Viral Potential: {clip.viralScore}%
-                      </span>
+                  return (
+                    <ClipCard
+                      key={originalIndex}
+                      clip={clip}
+                      index={index}
+                      vizardClip={vizardClip}
+                      isApproved={approvedClips.includes(originalIndex)}
+                      vizardLoading={vizardLoading}
+                      onApprove={() =>
+                        setApprovedClips((prev) => [...prev, originalIndex])
+                      }
+                      onGenerateVideo={generateVideo}
+                      onCopyText={copyText}
+                    />
+                  );
+                })}
+              </div>
+            </motion.section>
+          )}
+        </AnimatePresence>
+      </main>
 
-                      <span className="text-sm text-gray-400">
-                        TikTok • Reels • Shorts
-                      </span>
-                    </div>
-
-                    {vizardUrl ? (
-                      <div className="mt-5">
-                        <video src={vizardUrl} controls className="w-full rounded-2xl" />
-                      </div>
-                    ) : (
-                      <div className="mt-5 h-44 rounded-2xl bg-gradient-to-br from-gray-800 to-gray-900" />
-                    )}
-
-                    <h3 className="mt-5 text-2xl font-semibold">{clip.title}</h3>
-
-                    <p className="mt-2 text-gray-400">Timestamp: {clip.timestamp}</p>
-
-                    {clip.snippet && (
-                      <div className="mt-5 rounded-2xl border border-gray-700 bg-[#181818] p-4">
-                        <p className="text-sm font-semibold text-gray-300">
-                          Transcript Snippet
-                        </p>
-
-                        <p className="mt-2 italic text-gray-400">
-                          &quot;{clip.snippet}&quot;
-                        </p>
-                      </div>
-                    )}
-
-                    <div className="mt-5">
-                      <p className="text-sm font-semibold text-gray-300">
-                        Why AI selected this clip:
-                      </p>
-
-                      <p className="mt-2 text-gray-400">{clip.reason}</p>
-                    </div>
-
-                    <div className="mt-5">
-                      <p className="text-sm font-semibold text-gray-300">
-                        Generated Hook
-                      </p>
-
-                      <p className="mt-2 text-gray-400">{clip.caption}</p>
-                    </div>
-
-                    <div className="mt-5 flex flex-wrap gap-2">
-                      {clip.hashtags.map((tag, i) => (
-                        <span
-                          key={i}
-                          className="rounded-full bg-gray-800 px-3 py-1 text-sm text-blue-300"
-                        >
-                          {tag}
-                        </span>
-                      ))}
-                    </div>
-
-                    <div className="mt-6 flex flex-wrap gap-3">
-                      <button
-                        onClick={() => setApprovedClips([...approvedClips, index])}
-                        className="rounded-xl bg-white px-4 py-2 font-semibold text-black"
-                      >
-                        {approvedClips.includes(index) ? "Approved ✓" : "Approve"}
-                      </button>
-
-                      <button
-                        onClick={generateVideo}
-                        disabled={vizardLoading}
-                        className="rounded-xl bg-blue-600 px-4 py-2 font-semibold text-white disabled:opacity-50"
-                      >
-                        {vizardLoading ? "Generating..." : "Generate Real Short"}
-                      </button>
-
-                      {vizardUrl && (
-                        <a
-                          href={vizardUrl}
-                          target="_blank"
-                          className="rounded-xl bg-white px-4 py-2 font-semibold text-black"
-                        >
-                          Open / Download
-                        </a>
-                      )}
-
-                      <button className="rounded-xl border border-gray-700 px-4 py-2 text-white">
-                        Regenerate
-                      </button>
-
-                      <button
-                        onClick={() => copyText(clip.caption)}
-                        className="rounded-xl border border-gray-700 px-4 py-2 text-white"
-                      >
-                        Copy Hook
-                      </button>
-
-                      <button
-                        onClick={() => copyText(clip.hashtags.join(" "))}
-                        className="rounded-xl border border-gray-700 px-4 py-2 text-white"
-                      >
-                        Copy Hashtags
-                      </button>
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-          </div>
-        )}
-      </div>
-    </main>
+      {/* Footer */}
+      <footer className="border-t border-border py-6">
+        <div className="mx-auto max-w-7xl px-6">
+          <p className="text-center text-xs text-muted-foreground">
+            ProMazo Content Agent &mdash; AI-powered content pipeline for modern
+            creators
+          </p>
+        </div>
+      </footer>
+    </div>
   );
 }
