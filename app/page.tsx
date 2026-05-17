@@ -67,10 +67,16 @@ export default function Home() {
     }
   }, []);
 
-  // Save history to localStorage
-  const saveHistory = (entries: HistoryEntry[]) => {
-    setHistory(entries);
-    localStorage.setItem("promazo-history", JSON.stringify(entries));
+  // Save history to localStorage (using functional update to avoid stale closures)
+  const saveHistory = (
+    updater: HistoryEntry[] | ((prev: HistoryEntry[]) => HistoryEntry[])
+  ) => {
+    setHistory((prev) => {
+      const newHistory =
+        typeof updater === "function" ? updater(prev) : updater;
+      localStorage.setItem("promazo-history", JSON.stringify(newHistory));
+      return newHistory;
+    });
   };
 
   // Save a new entry to history (when project is first submitted)
@@ -79,21 +85,22 @@ export default function Home() {
     projectId: string,
     status: "processing" | "ready" | "error" = "processing"
   ) => {
-    // Check if project already exists
-    const existing = history.find((h) => h.projectId === projectId);
-    if (existing) return; // Don't duplicate
+    saveHistory((prev) => {
+      // Check if project already exists
+      const existing = prev.find((h) => h.projectId === projectId);
+      if (existing) return prev; // Don't duplicate
 
-    const newEntry: HistoryEntry = {
-      id: Date.now().toString(),
-      projectId,
-      videoLink: link,
-      date: new Date().toISOString(),
-      clips: [],
-      status,
-    };
-    // Prepend new entry, keep max 20 entries
-    const updated = [newEntry, ...history].slice(0, 20);
-    saveHistory(updated);
+      const newEntry: HistoryEntry = {
+        id: Date.now().toString(),
+        projectId,
+        videoLink: link,
+        date: new Date().toISOString(),
+        clips: [],
+        status,
+      };
+      // Prepend new entry, keep max 20 entries
+      return [newEntry, ...prev].slice(0, 20);
+    });
   };
 
   // Update an existing history entry with clips (when processing completes)
@@ -102,22 +109,23 @@ export default function Home() {
     clips: VizardClip[],
     projectName?: string
   ) => {
-    const updated = history.map((h) =>
-      h.projectId === projectId
-        ? {
-            ...h,
-            projectName: projectName || h.projectName,
-            status: "ready" as const,
-            clips: clips.map((c) => ({
-              title: c.title,
-              videoUrl: c.videoUrl || c.downloadUrl || c.url,
-              viralScore: c.viralScore,
-              duration: c.duration,
-            })),
-          }
-        : h
+    saveHistory((prev) =>
+      prev.map((h) =>
+        h.projectId === projectId
+          ? {
+              ...h,
+              projectName: projectName || h.projectName,
+              status: "ready" as const,
+              clips: clips.map((c) => ({
+                title: c.title,
+                videoUrl: c.videoUrl || c.downloadUrl || c.url,
+                viralScore: c.viralScore,
+                duration: c.duration,
+              })),
+            }
+          : h
+      )
     );
-    saveHistory(updated);
   };
 
   // Save a new entry to history (legacy - for backward compatibility)
@@ -127,32 +135,46 @@ export default function Home() {
     projectId?: string,
     projectName?: string
   ) => {
-    if (projectId) {
-      // If project already exists, just update it
-      const existing = history.find((h) => h.projectId === projectId);
-      if (existing) {
-        updateHistoryWithClips(projectId, clips, projectName);
-        return;
+    saveHistory((prev) => {
+      if (projectId) {
+        // If project already exists, just update it
+        const existing = prev.find((h) => h.projectId === projectId);
+        if (existing) {
+          return prev.map((h) =>
+            h.projectId === projectId
+              ? {
+                  ...h,
+                  projectName: projectName || h.projectName,
+                  status: "ready" as const,
+                  clips: clips.map((c) => ({
+                    title: c.title,
+                    videoUrl: c.videoUrl || c.downloadUrl || c.url,
+                    viralScore: c.viralScore,
+                    duration: c.duration,
+                  })),
+                }
+              : h
+          );
+        }
       }
-    }
 
-    const newEntry: HistoryEntry = {
-      id: Date.now().toString(),
-      projectId,
-      projectName,
-      videoLink: link,
-      date: new Date().toISOString(),
-      status: "ready",
-      clips: clips.map((c) => ({
-        title: c.title,
-        videoUrl: c.videoUrl || c.downloadUrl || c.url,
-        viralScore: c.viralScore,
-        duration: c.duration,
-      })),
-    };
-    // Prepend new entry, keep max 20 entries
-    const updated = [newEntry, ...history].slice(0, 20);
-    saveHistory(updated);
+      const newEntry: HistoryEntry = {
+        id: Date.now().toString(),
+        projectId,
+        projectName,
+        videoLink: link,
+        date: new Date().toISOString(),
+        status: "ready",
+        clips: clips.map((c) => ({
+          title: c.title,
+          videoUrl: c.videoUrl || c.downloadUrl || c.url,
+          viralScore: c.viralScore,
+          duration: c.duration,
+        })),
+      };
+      // Prepend new entry, keep max 20 entries
+      return [newEntry, ...prev].slice(0, 20);
+    });
   };
 
   // Load a history entry
@@ -172,14 +194,21 @@ export default function Home() {
 
   // Refresh a history entry from Vizard API
   const refreshHistoryEntry = async (id: string) => {
-    const entry = history.find((h) => h.id === id);
-    if (!entry?.projectId) return;
+    // Get the entry from current state
+    let entryProjectId: string | undefined;
+    setHistory((prev) => {
+      const entry = prev.find((h) => h.id === id);
+      entryProjectId = entry?.projectId;
+      return prev;
+    });
+
+    if (!entryProjectId) return;
 
     try {
       const response = await fetch("/api/vizard/status", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ projectId: entry.projectId }),
+        body: JSON.stringify({ projectId: entryProjectId }),
       });
 
       const data = await response.json();
@@ -200,29 +229,32 @@ export default function Home() {
           })
         );
 
-        const updated = history.map((h) =>
-          h.id === id
-            ? {
-                ...h,
-                projectName: data.projectName || h.projectName,
-                status: "ready" as const,
-                clips: updatedClips,
-              }
-            : h
+        saveHistory((prev) =>
+          prev.map((h) =>
+            h.id === id
+              ? {
+                  ...h,
+                  projectName: data.projectName || h.projectName,
+                  status: "ready" as const,
+                  clips: updatedClips,
+                }
+              : h
+          )
         );
-        saveHistory(updated);
       } else if (data.code === 1000) {
         // Still processing - update status
-        const updated = history.map((h) =>
-          h.id === id ? { ...h, status: "processing" as const } : h
+        saveHistory((prev) =>
+          prev.map((h) =>
+            h.id === id ? { ...h, status: "processing" as const } : h
+          )
         );
-        saveHistory(updated);
       } else if (data.code && data.code !== 2000 && data.code !== 1000) {
         // Error from Vizard
-        const updated = history.map((h) =>
-          h.id === id ? { ...h, status: "error" as const } : h
+        saveHistory((prev) =>
+          prev.map((h) =>
+            h.id === id ? { ...h, status: "error" as const } : h
+          )
         );
-        saveHistory(updated);
       }
     } catch (error) {
       console.error("Failed to refresh history entry:", error);
@@ -231,9 +263,14 @@ export default function Home() {
 
   // Import a Vizard project by ID
   const importVizardProject = async (projectId: string) => {
-    // Check if already imported
-    const existing = history.find((h) => h.projectId === projectId);
-    if (existing) {
+    // Check if already imported (using functional approach to read current state)
+    let alreadyExists = false;
+    setHistory((prev) => {
+      alreadyExists = prev.some((h) => h.projectId === projectId);
+      return prev;
+    });
+
+    if (alreadyExists) {
       throw new Error("This project is already in your library.");
     }
 
@@ -276,14 +313,12 @@ export default function Home() {
       clips,
     };
 
-    const updated = [newEntry, ...history].slice(0, 20);
-    saveHistory(updated);
+    saveHistory((prev) => [newEntry, ...prev].slice(0, 20));
   };
 
   // Delete a history entry
   const deleteHistoryEntry = (id: string) => {
-    const updated = history.filter((h) => h.id !== id);
-    saveHistory(updated);
+    saveHistory((prev) => prev.filter((h) => h.id !== id));
   };
 
   // Clear all history
