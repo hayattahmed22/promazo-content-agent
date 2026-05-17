@@ -74,9 +74,16 @@ export default function Home() {
   };
 
   // Save a new entry to history
-  const saveToHistory = (link: string, clips: VizardClip[]) => {
+  const saveToHistory = (
+    link: string,
+    clips: VizardClip[],
+    projectId?: string,
+    projectName?: string
+  ) => {
     const newEntry: HistoryEntry = {
       id: Date.now().toString(),
+      projectId,
+      projectName,
       videoLink: link,
       date: new Date().toISOString(),
       clips: clips.map((c) => ({
@@ -104,6 +111,52 @@ export default function Home() {
     setVideoLink(entry.videoLink);
     setVizardStatus("Loaded from history");
     setHistoryOpen(false);
+  };
+
+  // Refresh a history entry from Vizard API
+  const refreshHistoryEntry = async (id: string) => {
+    const entry = history.find((h) => h.id === id);
+    if (!entry?.projectId) return;
+
+    try {
+      const response = await fetch("/api/vizard/status", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ projectId: entry.projectId }),
+      });
+
+      const data = await response.json();
+
+      if (data.code === 2000 && data.videos?.length > 0) {
+        // Update the history entry with fresh data
+        const updatedClips = data.videos.map(
+          (v: Record<string, unknown>) => ({
+            title: v.title as string,
+            videoUrl: v.videoUrl as string,
+            viralScore: v.viralScore
+              ? Math.round(parseFloat(String(v.viralScore)) * 10)
+              : undefined,
+            duration: v.videoMsDuration
+              ? (v.videoMsDuration as number) / 1000
+              : undefined,
+            clipEditorUrl: v.clipEditorUrl as string,
+          })
+        );
+
+        const updated = history.map((h) =>
+          h.id === id
+            ? {
+                ...h,
+                projectName: data.projectName || h.projectName,
+                clips: updatedClips,
+              }
+            : h
+        );
+        saveHistory(updated);
+      }
+    } catch (error) {
+      console.error("Failed to refresh history entry:", error);
+    }
   };
 
   // Delete a history entry
@@ -334,8 +387,13 @@ export default function Home() {
           setVizardClips(readyClips);
           setVizardStatus("Vizard clips are ready.");
           setVizardLoading(false);
-          // Save to history
-          saveToHistory(urlToUse, readyClips);
+          // Save to history with projectId and projectName
+          saveToHistory(
+            urlToUse,
+            readyClips,
+            String(projectId),
+            statusData.projectName
+          );
           return;
         }
       }
@@ -391,6 +449,7 @@ export default function Home() {
         onLoadEntry={loadHistoryEntry}
         onDeleteEntry={deleteHistoryEntry}
         onClearAll={clearHistory}
+        onRefreshEntry={refreshHistoryEntry}
       />
 
       <main className="mx-auto max-w-7xl px-6 py-10">
