@@ -60,14 +60,12 @@ export default function Home() {
     
     try {
       const stored = localStorage.getItem("promazo-history");
-      console.log("[v0] Loading history from localStorage:", stored ? "found" : "empty");
       if (stored) {
         const parsed = JSON.parse(stored);
-        console.log("[v0] Parsed history entries:", parsed.length);
         setHistory(parsed);
       }
     } catch (error) {
-      console.error("[v0] Failed to load history:", error);
+      console.error("Failed to load history:", error);
       localStorage.removeItem("promazo-history");
     }
   }, []);
@@ -83,9 +81,8 @@ export default function Home() {
         typeof updater === "function" ? updater(prev) : updater;
       try {
         localStorage.setItem("promazo-history", JSON.stringify(newHistory));
-        console.log("[v0] Saved history to localStorage:", newHistory.length, "entries");
       } catch (error) {
-        console.error("[v0] Failed to save history:", error);
+        console.error("Failed to save history:", error);
       }
       return newHistory;
     });
@@ -189,19 +186,87 @@ export default function Home() {
     });
   };
 
-  // Load a history entry
-  const loadHistoryEntry = (entry: HistoryEntry) => {
-    // Convert history clips back to VizardClip format
-    const loadedClips: VizardClip[] = entry.clips.map((c) => ({
-      title: c.title,
-      videoUrl: c.videoUrl,
-      viralScore: c.viralScore,
-      duration: c.duration,
-    }));
-    setVizardClips(loadedClips);
-    setVideoLink(entry.videoLink);
-    setVizardStatus("Loaded from history");
+  // Load a history entry (and auto-refresh if no clips)
+  const loadHistoryEntry = async (entry: HistoryEntry) => {
     setHistoryOpen(false);
+    setVideoLink(entry.videoLink);
+
+    // If no clips and we have a projectId, fetch fresh data from Vizard
+    if (entry.clips.length === 0 && entry.projectId) {
+      setVizardLoading(true);
+      setVizardStatus("Fetching clips from Vizard...");
+      setVizardClips([]);
+
+      try {
+        const response = await fetch("/api/vizard/status", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ projectId: entry.projectId }),
+        });
+
+        const data = await response.json();
+
+        if (data.code === 2000 && data.videos?.length > 0) {
+          // Clips are ready - parse and display
+          const freshClips: VizardClip[] = data.videos.map(
+            (v: Record<string, unknown>) => ({
+              title: v.title as string,
+              videoUrl: v.videoUrl as string,
+              viralScore: v.viralScore
+                ? Math.round(parseFloat(String(v.viralScore)) * 10)
+                : undefined,
+              duration: v.videoMsDuration
+                ? (v.videoMsDuration as number) / 1000
+                : undefined,
+            })
+          );
+
+          setVizardClips(freshClips);
+          setVizardStatus("Clips loaded from Vizard");
+          setVizardLoading(false);
+
+          // Also update the history entry with the fresh clips
+          saveHistory((prev) =>
+            prev.map((h) =>
+              h.id === entry.id
+                ? {
+                    ...h,
+                    projectName: data.projectName || h.projectName,
+                    status: "ready" as const,
+                    clips: freshClips.map((c) => ({
+                      title: c.title,
+                      videoUrl: c.videoUrl,
+                      viralScore: c.viralScore,
+                      duration: c.duration,
+                    })),
+                  }
+                : h
+            )
+          );
+        } else if (data.code === 1000) {
+          // Still processing
+          setVizardStatus("Vizard is still processing this video. Try again later.");
+          setVizardLoading(false);
+        } else {
+          setVizardStatus("Could not fetch clips. The project may have expired.");
+          setVizardLoading(false);
+        }
+      } catch (error) {
+        console.error("Failed to fetch clips:", error);
+        setVizardStatus("Failed to fetch clips from Vizard.");
+        setVizardLoading(false);
+      }
+    } else {
+      // We have clips - just load them
+      const loadedClips: VizardClip[] = entry.clips.map((c) => ({
+        title: c.title,
+        videoUrl: c.videoUrl,
+        viralScore: c.viralScore,
+        duration: c.duration,
+      }));
+      setVizardClips(loadedClips);
+      setVizardStatus("Loaded from history");
+    }
   };
 
   // Refresh a history entry from Vizard API
