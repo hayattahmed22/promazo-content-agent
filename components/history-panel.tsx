@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   X,
@@ -13,7 +13,10 @@ import {
   Search,
   Zap,
   Film,
+  Plus,
+  AlertCircle,
   Loader2,
+  CheckCircle2,
 } from "lucide-react";
 
 export type HistoryClip = {
@@ -45,6 +48,7 @@ interface HistoryPanelProps {
   onDeleteEntry: (id: string) => void;
   onClearAll: () => void;
   onRefreshEntry?: (id: string) => Promise<void>;
+  onImportProject?: (projectId: string) => Promise<void>;
 }
 
 export function HistoryPanel({
@@ -55,9 +59,14 @@ export function HistoryPanel({
   onDeleteEntry,
   onClearAll,
   onRefreshEntry,
+  onImportProject,
 }: HistoryPanelProps) {
   const [searchQuery, setSearchQuery] = useState("");
   const [refreshingId, setRefreshingId] = useState<string | null>(null);
+  const [showImportInput, setShowImportInput] = useState(false);
+  const [importProjectId, setImportProjectId] = useState("");
+  const [importLoading, setImportLoading] = useState(false);
+  const [importError, setImportError] = useState("");
 
   const formatDate = (dateString: string) => {
     const date = new Date(dateString);
@@ -88,6 +97,51 @@ export function HistoryPanel({
     setRefreshingId(id);
     await onRefreshEntry(id);
     setRefreshingId(null);
+  };
+
+  const handleImport = async () => {
+    if (!onImportProject || !importProjectId.trim()) return;
+    setImportLoading(true);
+    setImportError("");
+    try {
+      await onImportProject(importProjectId.trim());
+      setImportProjectId("");
+      setShowImportInput(false);
+    } catch (error) {
+      setImportError(
+        error instanceof Error ? error.message : "Failed to import project"
+      );
+    } finally {
+      setImportLoading(false);
+    }
+  };
+
+  const getStatusBadge = (entry: HistoryEntry) => {
+    if (entry.status === "processing") {
+      return (
+        <span className="flex items-center gap-1 rounded-full bg-amber-500/10 px-2 py-0.5 text-[10px] font-medium text-amber-500">
+          <Loader2 className="h-3 w-3 animate-spin" />
+          Processing
+        </span>
+      );
+    }
+    if (entry.status === "error") {
+      return (
+        <span className="flex items-center gap-1 rounded-full bg-destructive/10 px-2 py-0.5 text-[10px] font-medium text-destructive">
+          <AlertCircle className="h-3 w-3" />
+          Error
+        </span>
+      );
+    }
+    if (entry.clips.length > 0) {
+      return (
+        <span className="flex items-center gap-1 rounded-full bg-success/10 px-2 py-0.5 text-[10px] font-medium text-success">
+          <CheckCircle2 className="h-3 w-3" />
+          Ready
+        </span>
+      );
+    }
+    return null;
   };
 
   // Filter history based on search
@@ -149,7 +203,7 @@ export function HistoryPanel({
                     </h2>
                     <p className="text-xs text-muted-foreground">
                       {history.length} project{history.length !== 1 ? "s" : ""}{" "}
-                      in workspace
+                      saved locally
                     </p>
                   </div>
                 </div>
@@ -171,6 +225,60 @@ export function HistoryPanel({
                   onChange={(e) => setSearchQuery(e.target.value)}
                   className="w-full rounded-lg border border-border bg-muted/50 py-2.5 pl-10 pr-4 text-sm text-foreground placeholder:text-muted-foreground focus:border-accent/50 focus:outline-none focus:ring-1 focus:ring-accent/30"
                 />
+              </div>
+
+              {/* Import Vizard Project ID */}
+              <div className="mt-3">
+                {showImportInput ? (
+                  <div className="flex flex-col gap-2">
+                    <div className="flex gap-2">
+                      <input
+                        type="text"
+                        placeholder="Paste Vizard Project ID..."
+                        value={importProjectId}
+                        onChange={(e) => setImportProjectId(e.target.value)}
+                        className="flex-1 rounded-lg border border-border bg-muted/50 px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground focus:border-accent/50 focus:outline-none focus:ring-1 focus:ring-accent/30"
+                      />
+                      <button
+                        onClick={handleImport}
+                        disabled={importLoading || !importProjectId.trim()}
+                        className="flex items-center gap-1.5 rounded-lg bg-accent px-3 py-2 text-xs font-semibold text-accent-foreground transition-colors hover:brightness-110 disabled:opacity-50"
+                      >
+                        {importLoading ? (
+                          <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                        ) : (
+                          <Plus className="h-3.5 w-3.5" />
+                        )}
+                        Import
+                      </button>
+                      <button
+                        onClick={() => {
+                          setShowImportInput(false);
+                          setImportProjectId("");
+                          setImportError("");
+                        }}
+                        className="rounded-lg border border-border px-3 py-2 text-xs font-medium text-muted-foreground hover:text-foreground"
+                      >
+                        Cancel
+                      </button>
+                    </div>
+                    {importError && (
+                      <p className="text-xs text-destructive">{importError}</p>
+                    )}
+                    <p className="text-[11px] text-muted-foreground">
+                      Find the Project ID in your Vizard dashboard URL or project
+                      details.
+                    </p>
+                  </div>
+                ) : (
+                  <button
+                    onClick={() => setShowImportInput(true)}
+                    className="flex w-full items-center justify-center gap-2 rounded-lg border border-dashed border-border py-2.5 text-xs font-medium text-muted-foreground transition-colors hover:border-accent/40 hover:text-foreground"
+                  >
+                    <Plus className="h-3.5 w-3.5" />
+                    Import Vizard Project ID
+                  </button>
+                )}
               </div>
             </div>
 
@@ -272,11 +380,14 @@ export function HistoryPanel({
                           {/* Title & Date */}
                           <div className="flex items-start justify-between gap-2">
                             <div className="min-w-0 flex-1">
-                              <h3 className="truncate text-sm font-semibold text-foreground">
-                                {entry.projectName ||
-                                  entry.clips[0]?.title ||
-                                  "Untitled Project"}
-                              </h3>
+                              <div className="flex items-center gap-2">
+                                <h3 className="truncate text-sm font-semibold text-foreground">
+                                  {entry.projectName ||
+                                    entry.clips[0]?.title ||
+                                    "Untitled Project"}
+                                </h3>
+                                {getStatusBadge(entry)}
+                              </div>
                               <p className="mt-0.5 flex items-center gap-1.5 text-xs text-muted-foreground">
                                 <Clock className="h-3 w-3" />
                                 {formatDate(entry.date)}

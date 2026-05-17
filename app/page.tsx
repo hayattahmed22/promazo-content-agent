@@ -73,19 +73,76 @@ export default function Home() {
     localStorage.setItem("promazo-history", JSON.stringify(entries));
   };
 
-  // Save a new entry to history
+  // Save a new entry to history (when project is first submitted)
+  const saveProjectToHistory = (
+    link: string,
+    projectId: string,
+    status: "processing" | "ready" | "error" = "processing"
+  ) => {
+    // Check if project already exists
+    const existing = history.find((h) => h.projectId === projectId);
+    if (existing) return; // Don't duplicate
+
+    const newEntry: HistoryEntry = {
+      id: Date.now().toString(),
+      projectId,
+      videoLink: link,
+      date: new Date().toISOString(),
+      clips: [],
+      status,
+    };
+    // Prepend new entry, keep max 20 entries
+    const updated = [newEntry, ...history].slice(0, 20);
+    saveHistory(updated);
+  };
+
+  // Update an existing history entry with clips (when processing completes)
+  const updateHistoryWithClips = (
+    projectId: string,
+    clips: VizardClip[],
+    projectName?: string
+  ) => {
+    const updated = history.map((h) =>
+      h.projectId === projectId
+        ? {
+            ...h,
+            projectName: projectName || h.projectName,
+            status: "ready" as const,
+            clips: clips.map((c) => ({
+              title: c.title,
+              videoUrl: c.videoUrl || c.downloadUrl || c.url,
+              viralScore: c.viralScore,
+              duration: c.duration,
+            })),
+          }
+        : h
+    );
+    saveHistory(updated);
+  };
+
+  // Save a new entry to history (legacy - for backward compatibility)
   const saveToHistory = (
     link: string,
     clips: VizardClip[],
     projectId?: string,
     projectName?: string
   ) => {
+    if (projectId) {
+      // If project already exists, just update it
+      const existing = history.find((h) => h.projectId === projectId);
+      if (existing) {
+        updateHistoryWithClips(projectId, clips, projectName);
+        return;
+      }
+    }
+
     const newEntry: HistoryEntry = {
       id: Date.now().toString(),
       projectId,
       projectName,
       videoLink: link,
       date: new Date().toISOString(),
+      status: "ready",
       clips: clips.map((c) => ({
         title: c.title,
         videoUrl: c.videoUrl || c.downloadUrl || c.url,
@@ -128,7 +185,7 @@ export default function Home() {
       const data = await response.json();
 
       if (data.code === 2000 && data.videos?.length > 0) {
-        // Update the history entry with fresh data
+        // Update the history entry with fresh data - clips are ready
         const updatedClips = data.videos.map(
           (v: Record<string, unknown>) => ({
             title: v.title as string,
@@ -148,15 +205,79 @@ export default function Home() {
             ? {
                 ...h,
                 projectName: data.projectName || h.projectName,
+                status: "ready" as const,
                 clips: updatedClips,
               }
             : h
+        );
+        saveHistory(updated);
+      } else if (data.code === 1000) {
+        // Still processing - update status
+        const updated = history.map((h) =>
+          h.id === id ? { ...h, status: "processing" as const } : h
+        );
+        saveHistory(updated);
+      } else if (data.code && data.code !== 2000 && data.code !== 1000) {
+        // Error from Vizard
+        const updated = history.map((h) =>
+          h.id === id ? { ...h, status: "error" as const } : h
         );
         saveHistory(updated);
       }
     } catch (error) {
       console.error("Failed to refresh history entry:", error);
     }
+  };
+
+  // Import a Vizard project by ID
+  const importVizardProject = async (projectId: string) => {
+    // Check if already imported
+    const existing = history.find((h) => h.projectId === projectId);
+    if (existing) {
+      throw new Error("This project is already in your library.");
+    }
+
+    // Fetch project details from Vizard
+    const response = await fetch("/api/vizard/status", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ projectId }),
+    });
+
+    const data = await response.json();
+
+    if (!response.ok || (data.code && data.code !== 2000 && data.code !== 1000)) {
+      throw new Error(data.errMsg || "Failed to fetch project from Vizard.");
+    }
+
+    // Create history entry
+    const clips =
+      data.code === 2000 && data.videos?.length > 0
+        ? data.videos.map((v: Record<string, unknown>) => ({
+            title: v.title as string,
+            videoUrl: v.videoUrl as string,
+            viralScore: v.viralScore
+              ? Math.round(parseFloat(String(v.viralScore)) * 10)
+              : undefined,
+            duration: v.videoMsDuration
+              ? (v.videoMsDuration as number) / 1000
+              : undefined,
+            clipEditorUrl: v.clipEditorUrl as string,
+          }))
+        : [];
+
+    const newEntry: HistoryEntry = {
+      id: Date.now().toString(),
+      projectId,
+      projectName: data.projectName || "Imported Project",
+      videoLink: data.videoUrl || "",
+      date: new Date().toISOString(),
+      status: data.code === 1000 ? "processing" : "ready",
+      clips,
+    };
+
+    const updated = [newEntry, ...history].slice(0, 20);
+    saveHistory(updated);
   };
 
   // Delete a history entry
@@ -351,6 +472,9 @@ export default function Home() {
         return;
       }
 
+      // Save to history immediately with "processing" status
+      saveProjectToHistory(urlToUse, String(projectId), "processing");
+
       setVizardStatus("Vizard is generating captioned short videos...");
 
       for (let i = 0; i < 30; i++) {
@@ -387,11 +511,10 @@ export default function Home() {
           setVizardClips(readyClips);
           setVizardStatus("Vizard clips are ready.");
           setVizardLoading(false);
-          // Save to history with projectId and projectName
-          saveToHistory(
-            urlToUse,
-            readyClips,
+          // Update the history entry with clips (it was saved earlier with "processing" status)
+          updateHistoryWithClips(
             String(projectId),
+            readyClips,
             statusData.projectName
           );
           return;
@@ -450,6 +573,7 @@ export default function Home() {
         onDeleteEntry={deleteHistoryEntry}
         onClearAll={clearHistory}
         onRefreshEntry={refreshHistoryEntry}
+        onImportProject={importVizardProject}
       />
 
       <main className="mx-auto max-w-7xl px-6 py-10">
