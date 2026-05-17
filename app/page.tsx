@@ -47,21 +47,53 @@ export default function Home() {
   const [approvedClips, setApprovedClips] = useState<number[]>([]);
   const [expandedCards, setExpandedCards] = useState<number[]>([]);
 
+  const [errorMessage, setErrorMessage] = useState("");
+
+  // Check if a URL is a supported video link for Vizard
+  const isVideoLink = (url: string) => {
+    const supportedDomains = [
+      "youtube.com",
+      "youtu.be",
+      "drive.google.com",
+      "vimeo.com",
+      "tiktok.com",
+      "loom.com",
+      "facebook.com",
+      "fb.watch",
+      "linkedin.com",
+      "twitch.tv",
+      ".mp4",
+    ];
+    return supportedDomains.some((domain) =>
+      url.toLowerCase().includes(domain)
+    );
+  };
+
   const analyzeContent = async () => {
     if (!file && !videoLink.trim()) {
       alert("Please upload a video or paste a video link first.");
       return;
     }
 
-    setLoading(true);
+    setErrorMessage("");
     setClips([]);
     setVizardClips([]);
 
+    // If a video link is provided, route directly to Vizard
+    if (videoLink.trim()) {
+      console.log("[v0] Video link detected, routing to Vizard:", videoLink);
+      await generateVideo(videoLink.trim());
+      return;
+    }
+
+    // File upload: use /api/analyze for transcription + Claude analysis
+    setLoading(true);
+
     try {
       const formData = new FormData();
-
       if (file) formData.append("file", file);
-      formData.append("videoUrl", videoLink);
+
+      console.log("[v0] Uploading file for analysis:", file?.name);
 
       const response = await fetch("/api/analyze", {
         method: "POST",
@@ -69,19 +101,17 @@ export default function Home() {
       });
 
       const data = await response.json();
-      console.log("Analyze response:", data);
+      console.log("[v0] Analyze response:", data);
 
-      // Google Drive links: automatically trigger Vizard pipeline
-      if (data.source === "google_drive") {
-        setLoading(false);
-        await generateVideo(data.videoUrl);
+      if (!response.ok) {
+        setErrorMessage(data.error || "Failed to analyze content.");
         return;
       }
 
       setClips(data.clips || []);
     } catch (error) {
-      console.error(error);
-      alert("Failed to analyze content.");
+      console.error("[v0] Analyze error:", error);
+      setErrorMessage("Failed to analyze content. Check the console for details.");
     } finally {
       setLoading(false);
     }
@@ -139,21 +169,18 @@ export default function Home() {
   const generateVideo = async (overrideUrl?: string) => {
     const urlToUse = overrideUrl || videoLink.trim();
     if (!urlToUse) {
-      alert("Paste a public YouTube, Drive, or podcast link first.");
+      setErrorMessage("Paste a public video link first.");
       return;
     }
 
-    const isDriveLink = urlToUse.includes("drive.google.com");
-
+    setErrorMessage("");
     setVizardLoading(true);
-    setVizardStatus(
-      isDriveLink
-        ? "Processing Google Drive video with Vizard..."
-        : "Submitting video to Vizard..."
-    );
+    setVizardStatus("Submitting video to Vizard...");
     setVizardClips([]);
 
     try {
+      console.log("[v0] Submitting to Vizard:", urlToUse);
+
       const submitResponse = await fetch("/api/vizard", {
         method: "POST",
         headers: {
@@ -165,18 +192,25 @@ export default function Home() {
       });
 
       const submitData = await submitResponse.json();
-      console.log("Vizard submit:", submitData);
+      console.log("[v0] Vizard submit response:", submitData);
 
       if (!submitResponse.ok) {
-        alert(submitData.error || "Vizard submit failed.");
+        const errorMsg = submitData.error || "Vizard submit failed.";
+        console.error("[v0] Vizard error:", errorMsg);
+        setErrorMessage(errorMsg);
+        setVizardStatus("");
         setVizardLoading(false);
         return;
       }
 
       const projectId = findProjectId(submitData);
+      console.log("[v0] Vizard projectId:", projectId);
 
       if (!projectId) {
-        alert("Vizard submitted, but no projectId was found. Check console.");
+        setErrorMessage(
+          "Vizard submitted, but no projectId was found. Check console for full response."
+        );
+        setVizardStatus("");
         setVizardLoading(false);
         return;
       }
@@ -188,6 +222,8 @@ export default function Home() {
 
         await new Promise((resolve) => setTimeout(resolve, 30000));
 
+        console.log("[v0] Polling Vizard status, attempt", i + 1);
+
         const statusResponse = await fetch("/api/vizard/status", {
           method: "POST",
           headers: {
@@ -197,11 +233,12 @@ export default function Home() {
         });
 
         const statusData = await statusResponse.json();
-        console.log("Vizard status:", statusData);
+        console.log("[v0] Vizard status response:", statusData);
 
         const readyClips = findVizardClips(statusData);
 
         if (readyClips && readyClips.length > 0) {
+          console.log("[v0] Vizard clips ready:", readyClips.length);
           setVizardClips(readyClips);
           setVizardStatus("Vizard clips are ready.");
           setVizardLoading(false);
@@ -212,8 +249,11 @@ export default function Home() {
       setVizardStatus("Still processing. Try again in a few minutes.");
       setVizardLoading(false);
     } catch (error) {
-      console.error(error);
-      setVizardStatus("Vizard failed. Check terminal/console.");
+      console.error("[v0] Vizard error:", error);
+      setErrorMessage(
+        `Vizard failed: ${error instanceof Error ? error.message : "Unknown error"}. Check console.`
+      );
+      setVizardStatus("");
       setVizardLoading(false);
     }
   };
@@ -290,6 +330,7 @@ export default function Home() {
             loading={loading}
             vizardLoading={vizardLoading}
             vizardStatus={vizardStatus}
+            errorMessage={errorMessage}
           />
         </div>
 
