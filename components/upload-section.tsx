@@ -8,6 +8,7 @@ interface UploadSectionProps {
   fileName: string;
   videoLink: string;
   loading: boolean;
+  vizardLoading: boolean;
   onFileChange: (e: ChangeEvent<HTMLInputElement>) => void;
   onLinkChange: (value: string) => void;
   onAnalyze: () => void;
@@ -18,10 +19,12 @@ export function UploadSection({
   fileName,
   videoLink,
   loading,
+  vizardLoading,
   onFileChange,
   onLinkChange,
   onAnalyze,
 }: UploadSectionProps) {
+  const isProcessing = loading || vizardLoading;
   return (
     <section className="glass rounded-2xl p-8">
       <div className="flex flex-col gap-1">
@@ -93,13 +96,13 @@ export function UploadSection({
         {/* Analyze button */}
         <button
           onClick={onAnalyze}
-          disabled={loading || (!file && !videoLink.trim())}
+          disabled={isProcessing || (!file && !videoLink.trim())}
           className="mt-2 flex w-fit items-center gap-2 rounded-xl bg-accent px-6 py-3 text-sm font-semibold text-accent-foreground shadow-lg shadow-accent/20 transition-all hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-50 disabled:shadow-none"
         >
-          {loading ? (
+          {isProcessing ? (
             <>
               <Loader2 className="h-4 w-4 animate-spin" />
-              Analyzing...
+              {vizardLoading ? "Processing with Vizard..." : "Analyzing..."}
             </>
           ) : (
             <>

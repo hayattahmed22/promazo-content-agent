@@ -318,6 +318,7 @@ export default function Home() {
             fileName={fileName}
             videoLink={videoLink}
             loading={loading}
+            vizardLoading={vizardLoading}
             onFileChange={handleFileChange}
             onLinkChange={handleLinkChange}
             onAnalyze={analyzeContent}
