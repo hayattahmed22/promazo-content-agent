@@ -54,16 +54,21 @@ export default function Home() {
   const [history, setHistory] = useState<HistoryEntry[]>([]);
   const [currentVideoLink, setCurrentVideoLink] = useState("");
 
-  // Load history from localStorage on mount
+  // Load history from localStorage on mount (client-side only)
   useEffect(() => {
-    const stored = localStorage.getItem("promazo-history");
-    if (stored) {
-      try {
-        setHistory(JSON.parse(stored));
-      } catch {
-        // Invalid JSON, reset
-        localStorage.removeItem("promazo-history");
+    if (typeof window === "undefined") return;
+    
+    try {
+      const stored = localStorage.getItem("promazo-history");
+      console.log("[v0] Loading history from localStorage:", stored ? "found" : "empty");
+      if (stored) {
+        const parsed = JSON.parse(stored);
+        console.log("[v0] Parsed history entries:", parsed.length);
+        setHistory(parsed);
       }
+    } catch (error) {
+      console.error("[v0] Failed to load history:", error);
+      localStorage.removeItem("promazo-history");
     }
   }, []);
 
@@ -71,10 +76,17 @@ export default function Home() {
   const saveHistory = (
     updater: HistoryEntry[] | ((prev: HistoryEntry[]) => HistoryEntry[])
   ) => {
+    if (typeof window === "undefined") return;
+    
     setHistory((prev) => {
       const newHistory =
         typeof updater === "function" ? updater(prev) : updater;
-      localStorage.setItem("promazo-history", JSON.stringify(newHistory));
+      try {
+        localStorage.setItem("promazo-history", JSON.stringify(newHistory));
+        console.log("[v0] Saved history to localStorage:", newHistory.length, "entries");
+      } catch (error) {
+        console.error("[v0] Failed to save history:", error);
+      }
       return newHistory;
     });
   };
