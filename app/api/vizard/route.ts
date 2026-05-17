@@ -30,7 +30,7 @@ export async function POST(req: NextRequest) {
         },
         body: JSON.stringify({
           lang: "en",
-          preferLength: [0],
+          preferLength: [1, 2],
           videoUrl,
           videoType: getVideoType(videoUrl),
         }),
