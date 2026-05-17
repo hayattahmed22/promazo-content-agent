@@ -47,21 +47,53 @@ export default function Home() {
   const [approvedClips, setApprovedClips] = useState<number[]>([]);
   const [expandedCards, setExpandedCards] = useState<number[]>([]);
 
+  const [errorMessage, setErrorMessage] = useState("");
+
+  // Check if a URL is a supported video link for Vizard
+  const isVideoLink = (url: string) => {
+    const supportedDomains = [
+      "youtube.com",
+      "youtu.be",
+      "drive.google.com",
+      "vimeo.com",
+      "tiktok.com",
+      "loom.com",
+      "facebook.com",
+      "fb.watch",
+      "linkedin.com",
+      "twitch.tv",
+      ".mp4",
+    ];
+    return supportedDomains.some((domain) =>
+      url.toLowerCase().includes(domain)
+    );
+  };
+
   const analyzeContent = async () => {
     if (!file && !videoLink.trim()) {
       alert("Please upload a video or paste a video link first.");
       return;
     }
 
-    setLoading(true);
+    setErrorMessage("");
     setClips([]);
     setVizardClips([]);
 
+    // If a video link is provided, route directly to Vizard
+    if (videoLink.trim()) {
+      console.log("[v0] Video link detected, routing to Vizard:", videoLink);
+      await generateVideo(videoLink.trim());
+      return;
+    }
+
+    // File upload: use /api/analyze for transcription + Claude analysis
+    setLoading(true);
+
     try {
       const formData = new FormData();
-
       if (file) formData.append("file", file);
-      formData.append("videoUrl", videoLink);
+
+      console.log("[v0] Uploading file for analysis:", file?.name);
 
       const response = await fetch("/api/analyze", {
         method: "POST",
@@ -69,19 +101,17 @@ export default function Home() {
       });
 
       const data = await response.json();
-      console.log("Analyze response:", data);
+      console.log("[v0] Analyze response:", data);
 
-      // Google Drive links: automatically trigger Vizard pipeline
-      if (data.source === "google_drive") {
-        setLoading(false);
-        await generateVideo(data.videoUrl);
+      if (!response.ok) {
+        setErrorMessage(data.error || "Failed to analyze content.");
         return;
       }
 
       setClips(data.clips || []);
     } catch (error) {
-      console.error(error);
-      alert("Failed to analyze content.");
+      console.error("[v0] Analyze error:", error);
+      setErrorMessage("Failed to analyze content. Check the console for details.");
     } finally {
       setLoading(false);
     }
@@ -97,41 +127,54 @@ export default function Home() {
 
   const findVizardClips = (data: Record<string, unknown>) => {
     const d = data as Record<string, unknown>;
-    const nested = (d.data ?? d.result ?? {}) as Record<string, unknown>;
+    
+    // Check Vizard status code - 1000 means still processing
+    if (d.code === 1000) {
+      console.log("[v0] Vizard still processing (code 1000)");
+      return [];
+    }
+
+    // videos array is at the top level in Vizard API response
     const rawClips: Record<string, unknown>[] =
-      (d.videos as Record<string, unknown>[]) ??
-      (d.clips as Record<string, unknown>[]) ??
-      (nested.videos as Record<string, unknown>[]) ??
-      (nested.clips as Record<string, unknown>[]) ??
-      [];
+      (d.videos as Record<string, unknown>[]) ?? [];
+
+    console.log("[v0] Found", rawClips.length, "raw clips from Vizard");
 
     // Normalize Vizard API fields into our VizardClip shape
-    const normalized: VizardClip[] = rawClips.map((c) => ({
-      title: (c.title as string) || undefined,
-      videoUrl: (c.videoUrl as string) || undefined,
-      downloadUrl: (c.downloadUrl as string) || undefined,
-      url: (c.url as string) || undefined,
-      duration: c.videoMsDuration
-        ? (c.videoMsDuration as number) / 1000
-        : c.duration
-          ? (c.duration as number)
-          : undefined,
-      viralScore: c.viralScore
-        ? Math.round(parseFloat(String(c.viralScore)) * 10)
-        : undefined,
-      transcript: (c.transcript as string) || undefined,
-      reason: (c.viralReason as string) || (c.reason as string) || undefined,
-      caption: (c.caption as string) || undefined,
-      hashtags: c.relatedTopic
-        ? JSON.parse(String(c.relatedTopic))
-        : c.hashtags
-          ? (c.hashtags as string[])
-          : undefined,
-    }));
+    const normalized: VizardClip[] = rawClips.map((c) => {
+      // Safely parse relatedTopic JSON
+      let hashtags: string[] | undefined;
+      try {
+        if (c.relatedTopic && String(c.relatedTopic) !== "[]") {
+          hashtags = JSON.parse(String(c.relatedTopic));
+        }
+      } catch {
+        hashtags = undefined;
+      }
 
-    // Filter out clips over 60 seconds, sort by viral score desc, take top 4
+      return {
+        title: (c.title as string) || undefined,
+        videoUrl: (c.videoUrl as string) || undefined,
+        downloadUrl: (c.downloadUrl as string) || undefined,
+        url: (c.url as string) || undefined,
+        duration: c.videoMsDuration
+          ? (c.videoMsDuration as number) / 1000
+          : c.duration
+            ? (c.duration as number)
+            : undefined,
+        // viralScore from Vizard is 0-10, multiply by 10 for percentage
+        viralScore: c.viralScore
+          ? Math.round(parseFloat(String(c.viralScore)) * 10)
+          : undefined,
+        transcript: (c.transcript as string) || undefined,
+        reason: (c.viralReason as string) || (c.reason as string) || undefined,
+        caption: (c.caption as string) || undefined,
+        hashtags,
+      };
+    });
+
+    // Sort by viral score desc, take top 4
     return normalized
-      .filter((c) => !c.duration || c.duration <= 60)
       .sort((a, b) => (b.viralScore ?? 0) - (a.viralScore ?? 0))
       .slice(0, 4);
   };
@@ -139,21 +182,18 @@ export default function Home() {
   const generateVideo = async (overrideUrl?: string) => {
     const urlToUse = overrideUrl || videoLink.trim();
     if (!urlToUse) {
-      alert("Paste a public YouTube, Drive, or podcast link first.");
+      setErrorMessage("Paste a public video link first.");
       return;
     }
 
-    const isDriveLink = urlToUse.includes("drive.google.com");
-
+    setErrorMessage("");
     setVizardLoading(true);
-    setVizardStatus(
-      isDriveLink
-        ? "Processing Google Drive video with Vizard..."
-        : "Submitting video to Vizard..."
-    );
+    setVizardStatus("Submitting video to Vizard...");
     setVizardClips([]);
 
     try {
+      console.log("[v0] Submitting to Vizard:", urlToUse);
+
       const submitResponse = await fetch("/api/vizard", {
         method: "POST",
         headers: {
@@ -165,18 +205,25 @@ export default function Home() {
       });
 
       const submitData = await submitResponse.json();
-      console.log("Vizard submit:", submitData);
+      console.log("[v0] Vizard submit response:", submitData);
 
       if (!submitResponse.ok) {
-        alert(submitData.error || "Vizard submit failed.");
+        const errorMsg = submitData.error || "Vizard submit failed.";
+        console.error("[v0] Vizard error:", errorMsg);
+        setErrorMessage(errorMsg);
+        setVizardStatus("");
         setVizardLoading(false);
         return;
       }
 
       const projectId = findProjectId(submitData);
+      console.log("[v0] Vizard projectId:", projectId);
 
       if (!projectId) {
-        alert("Vizard submitted, but no projectId was found. Check console.");
+        setErrorMessage(
+          "Vizard submitted, but no projectId was found. Check console for full response."
+        );
+        setVizardStatus("");
         setVizardLoading(false);
         return;
       }
@@ -188,6 +235,8 @@ export default function Home() {
 
         await new Promise((resolve) => setTimeout(resolve, 30000));
 
+        console.log("[v0] Polling Vizard status, attempt", i + 1);
+
         const statusResponse = await fetch("/api/vizard/status", {
           method: "POST",
           headers: {
@@ -197,11 +246,21 @@ export default function Home() {
         });
 
         const statusData = await statusResponse.json();
-        console.log("Vizard status:", statusData);
+        console.log("[v0] Vizard status response:", statusData);
+
+        // Check for Vizard error codes
+        if (statusData.code && statusData.code !== 2000 && statusData.code !== 1000) {
+          console.error("[v0] Vizard error code:", statusData.code, statusData.errMsg);
+          setErrorMessage(`Vizard error (${statusData.code}): ${statusData.errMsg || "Unknown error"}`);
+          setVizardStatus("");
+          setVizardLoading(false);
+          return;
+        }
 
         const readyClips = findVizardClips(statusData);
 
         if (readyClips && readyClips.length > 0) {
+          console.log("[v0] Vizard clips ready:", readyClips.length);
           setVizardClips(readyClips);
           setVizardStatus("Vizard clips are ready.");
           setVizardLoading(false);
@@ -212,8 +271,11 @@ export default function Home() {
       setVizardStatus("Still processing. Try again in a few minutes.");
       setVizardLoading(false);
     } catch (error) {
-      console.error(error);
-      setVizardStatus("Vizard failed. Check terminal/console.");
+      console.error("[v0] Vizard error:", error);
+      setErrorMessage(
+        `Vizard failed: ${error instanceof Error ? error.message : "Unknown error"}. Check console.`
+      );
+      setVizardStatus("");
       setVizardLoading(false);
     }
   };
@@ -278,6 +340,7 @@ export default function Home() {
             fileName={fileName}
             videoLink={videoLink}
             loading={loading}
+            vizardLoading={vizardLoading}
             onFileChange={handleFileChange}
             onLinkChange={handleLinkChange}
             onAnalyze={analyzeContent}
@@ -290,6 +353,7 @@ export default function Home() {
             loading={loading}
             vizardLoading={vizardLoading}
             vizardStatus={vizardStatus}
+            errorMessage={errorMessage}
           />
         </div>
 

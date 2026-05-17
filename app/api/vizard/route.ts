@@ -12,6 +12,8 @@ export async function POST(req: NextRequest) {
   try {
     const { videoUrl } = await req.json();
 
+    console.log("[v0] Vizard submit request:", { videoUrl });
+
     if (!videoUrl) {
       return NextResponse.json({ error: "Video URL is required." }, { status: 400 });
     }
@@ -19,6 +21,9 @@ export async function POST(req: NextRequest) {
     if (!process.env.VIZARD_API_KEY) {
       return NextResponse.json({ error: "Vizard API key missing." }, { status: 500 });
     }
+
+    const videoType = getVideoType(videoUrl);
+    console.log("[v0] Detected videoType:", videoType);
 
     const response = await fetch(
       "https://elb-api.vizard.ai/hvizard-server-front/open-api/v1/project/create",
@@ -32,20 +37,22 @@ export async function POST(req: NextRequest) {
           lang: "en",
           preferLength: [1, 2],
           videoUrl,
-          videoType: getVideoType(videoUrl),
+          videoType,
         }),
       }
     );
 
     const data = await response.json();
+    console.log("[v0] Vizard create response:", JSON.stringify(data, null, 2));
 
     if (!response.ok) {
+      console.error("[v0] Vizard create failed:", data);
       return NextResponse.json({ error: "Vizard submit failed", details: data }, { status: 500 });
     }
 
     return NextResponse.json(data);
   } catch (error) {
-    console.error(error);
+    console.error("[v0] Vizard submit error:", error);
     return NextResponse.json({ error: "Could not submit video to Vizard." }, { status: 500 });
   }
 }
