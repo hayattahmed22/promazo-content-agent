@@ -127,41 +127,54 @@ export default function Home() {
 
   const findVizardClips = (data: Record<string, unknown>) => {
     const d = data as Record<string, unknown>;
-    const nested = (d.data ?? d.result ?? {}) as Record<string, unknown>;
+    
+    // Check Vizard status code - 1000 means still processing
+    if (d.code === 1000) {
+      console.log("[v0] Vizard still processing (code 1000)");
+      return [];
+    }
+
+    // videos array is at the top level in Vizard API response
     const rawClips: Record<string, unknown>[] =
-      (d.videos as Record<string, unknown>[]) ??
-      (d.clips as Record<string, unknown>[]) ??
-      (nested.videos as Record<string, unknown>[]) ??
-      (nested.clips as Record<string, unknown>[]) ??
-      [];
+      (d.videos as Record<string, unknown>[]) ?? [];
+
+    console.log("[v0] Found", rawClips.length, "raw clips from Vizard");
 
     // Normalize Vizard API fields into our VizardClip shape
-    const normalized: VizardClip[] = rawClips.map((c) => ({
-      title: (c.title as string) || undefined,
-      videoUrl: (c.videoUrl as string) || undefined,
-      downloadUrl: (c.downloadUrl as string) || undefined,
-      url: (c.url as string) || undefined,
-      duration: c.videoMsDuration
-        ? (c.videoMsDuration as number) / 1000
-        : c.duration
-          ? (c.duration as number)
-          : undefined,
-      viralScore: c.viralScore
-        ? Math.round(parseFloat(String(c.viralScore)) * 10)
-        : undefined,
-      transcript: (c.transcript as string) || undefined,
-      reason: (c.viralReason as string) || (c.reason as string) || undefined,
-      caption: (c.caption as string) || undefined,
-      hashtags: c.relatedTopic
-        ? JSON.parse(String(c.relatedTopic))
-        : c.hashtags
-          ? (c.hashtags as string[])
-          : undefined,
-    }));
+    const normalized: VizardClip[] = rawClips.map((c) => {
+      // Safely parse relatedTopic JSON
+      let hashtags: string[] | undefined;
+      try {
+        if (c.relatedTopic && String(c.relatedTopic) !== "[]") {
+          hashtags = JSON.parse(String(c.relatedTopic));
+        }
+      } catch {
+        hashtags = undefined;
+      }
 
-    // Filter out clips over 60 seconds, sort by viral score desc, take top 4
+      return {
+        title: (c.title as string) || undefined,
+        videoUrl: (c.videoUrl as string) || undefined,
+        downloadUrl: (c.downloadUrl as string) || undefined,
+        url: (c.url as string) || undefined,
+        duration: c.videoMsDuration
+          ? (c.videoMsDuration as number) / 1000
+          : c.duration
+            ? (c.duration as number)
+            : undefined,
+        // viralScore from Vizard is 0-10, multiply by 10 for percentage
+        viralScore: c.viralScore
+          ? Math.round(parseFloat(String(c.viralScore)) * 10)
+          : undefined,
+        transcript: (c.transcript as string) || undefined,
+        reason: (c.viralReason as string) || (c.reason as string) || undefined,
+        caption: (c.caption as string) || undefined,
+        hashtags,
+      };
+    });
+
+    // Sort by viral score desc, take top 4
     return normalized
-      .filter((c) => !c.duration || c.duration <= 60)
       .sort((a, b) => (b.viralScore ?? 0) - (a.viralScore ?? 0))
       .slice(0, 4);
   };
@@ -234,6 +247,15 @@ export default function Home() {
 
         const statusData = await statusResponse.json();
         console.log("[v0] Vizard status response:", statusData);
+
+        // Check for Vizard error codes
+        if (statusData.code && statusData.code !== 2000 && statusData.code !== 1000) {
+          console.error("[v0] Vizard error code:", statusData.code, statusData.errMsg);
+          setErrorMessage(`Vizard error (${statusData.code}): ${statusData.errMsg || "Unknown error"}`);
+          setVizardStatus("");
+          setVizardLoading(false);
+          return;
+        }
 
         const readyClips = findVizardClips(statusData);
 
