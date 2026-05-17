@@ -1,12 +1,13 @@
 "use client";
 
-import { useState, type ChangeEvent } from "react";
+import { useState, useEffect, type ChangeEvent } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { Sparkles, Video, Clock, Hash, MessageSquareQuote, Zap, Copy, Check } from "lucide-react";
 import { Header } from "@/components/header";
 import { UploadSection } from "@/components/upload-section";
 import { StatusBanner } from "@/components/status-banner";
 import { ClipCard } from "@/components/clip-card";
+import { HistoryPanel, type HistoryEntry, type HistoryClip } from "@/components/history-panel";
 
 type Clip = {
   title: string;
@@ -47,6 +48,74 @@ export default function Home() {
   const [approvedClips, setApprovedClips] = useState<number[]>([]);
 
   const [errorMessage, setErrorMessage] = useState("");
+
+  // History state
+  const [historyOpen, setHistoryOpen] = useState(false);
+  const [history, setHistory] = useState<HistoryEntry[]>([]);
+  const [currentVideoLink, setCurrentVideoLink] = useState("");
+
+  // Load history from localStorage on mount
+  useEffect(() => {
+    const stored = localStorage.getItem("promazo-history");
+    if (stored) {
+      try {
+        setHistory(JSON.parse(stored));
+      } catch {
+        // Invalid JSON, reset
+        localStorage.removeItem("promazo-history");
+      }
+    }
+  }, []);
+
+  // Save history to localStorage
+  const saveHistory = (entries: HistoryEntry[]) => {
+    setHistory(entries);
+    localStorage.setItem("promazo-history", JSON.stringify(entries));
+  };
+
+  // Save a new entry to history
+  const saveToHistory = (link: string, clips: VizardClip[]) => {
+    const newEntry: HistoryEntry = {
+      id: Date.now().toString(),
+      videoLink: link,
+      date: new Date().toISOString(),
+      clips: clips.map((c) => ({
+        title: c.title,
+        videoUrl: c.videoUrl || c.downloadUrl || c.url,
+        viralScore: c.viralScore,
+        duration: c.duration,
+      })),
+    };
+    // Prepend new entry, keep max 20 entries
+    const updated = [newEntry, ...history].slice(0, 20);
+    saveHistory(updated);
+  };
+
+  // Load a history entry
+  const loadHistoryEntry = (entry: HistoryEntry) => {
+    // Convert history clips back to VizardClip format
+    const loadedClips: VizardClip[] = entry.clips.map((c) => ({
+      title: c.title,
+      videoUrl: c.videoUrl,
+      viralScore: c.viralScore,
+      duration: c.duration,
+    }));
+    setVizardClips(loadedClips);
+    setVideoLink(entry.videoLink);
+    setVizardStatus("Loaded from history");
+    setHistoryOpen(false);
+  };
+
+  // Delete a history entry
+  const deleteHistoryEntry = (id: string) => {
+    const updated = history.filter((h) => h.id !== id);
+    saveHistory(updated);
+  };
+
+  // Clear all history
+  const clearHistory = () => {
+    saveHistory([]);
+  };
 
   // Check if a URL is a supported video link for Vizard
   const isVideoLink = (url: string) => {
@@ -185,6 +254,8 @@ export default function Home() {
       return;
     }
 
+    // Track which URL we're processing for history
+    setCurrentVideoLink(urlToUse);
     setErrorMessage("");
     setVizardLoading(true);
     setVizardStatus("Submitting video to Vizard...");
@@ -263,6 +334,8 @@ export default function Home() {
           setVizardClips(readyClips);
           setVizardStatus("Vizard clips are ready.");
           setVizardLoading(false);
+          // Save to history
+          saveToHistory(urlToUse, readyClips);
           return;
         }
       }
@@ -308,7 +381,17 @@ export default function Home() {
 
   return (
     <div className="min-h-screen bg-background">
-      <Header />
+      <Header onHistoryClick={() => setHistoryOpen(true)} />
+
+      {/* History panel */}
+      <HistoryPanel
+        isOpen={historyOpen}
+        onClose={() => setHistoryOpen(false)}
+        history={history}
+        onLoadEntry={loadHistoryEntry}
+        onDeleteEntry={deleteHistoryEntry}
+        onClearAll={clearHistory}
+      />
 
       <main className="mx-auto max-w-7xl px-6 py-10">
         {/* Hero section */}
