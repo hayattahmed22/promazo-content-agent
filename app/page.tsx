@@ -2,7 +2,7 @@
 
 import { useState, type ChangeEvent } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { Sparkles, Video, ChevronDown, Clock, Hash, MessageSquareQuote, Zap, Copy, Check } from "lucide-react";
+import { Sparkles, Video, Clock, Hash, MessageSquareQuote, Zap, Copy, Check } from "lucide-react";
 import { Header } from "@/components/header";
 import { UploadSection } from "@/components/upload-section";
 import { StatusBanner } from "@/components/status-banner";
@@ -45,7 +45,6 @@ export default function Home() {
   const [clips, setClips] = useState<Clip[]>([]);
   const [vizardClips, setVizardClips] = useState<VizardClip[]>([]);
   const [approvedClips, setApprovedClips] = useState<number[]>([]);
-  const [expandedCards, setExpandedCards] = useState<number[]>([]);
 
   const [errorMessage, setErrorMessage] = useState("");
 
@@ -407,7 +406,7 @@ export default function Home() {
           )}
         </AnimatePresence>
 
-        {/* Vizard-only results (Google Drive workflow) */}
+        {/* Vizard-only results (Google Drive / direct link workflow) */}
         <AnimatePresence>
           {showVizardOnly && (
             <motion.section
@@ -425,8 +424,7 @@ export default function Home() {
                     Generated Short-Form Clips
                   </h2>
                   <p className="text-sm text-muted-foreground">
-                    Top {vizardClips.length} clips under 60s generated from your
-                    Google Drive video
+                    Top {vizardClips.length} clips generated from your video
                   </p>
                 </div>
               </div>
@@ -435,15 +433,6 @@ export default function Home() {
                 {vizardClips.map((vClip, index) => {
                   const vizardUrl =
                     vClip.videoUrl || vClip.downloadUrl || vClip.url;
-                  const isExpanded = expandedCards.includes(index);
-
-                  const toggleExpand = () => {
-                    setExpandedCards((prev) =>
-                      prev.includes(index)
-                        ? prev.filter((i) => i !== index)
-                        : [...prev, index]
-                    );
-                  };
 
                   return (
                     <motion.div
@@ -451,11 +440,29 @@ export default function Home() {
                       initial={{ opacity: 0, y: 20 }}
                       animate={{ opacity: 1, y: 0 }}
                       transition={{ duration: 0.4, delay: index * 0.1 }}
-                      className="glass group rounded-2xl p-5 transition-all hover:border-accent/30"
+                      className="glass group rounded-2xl p-6 transition-all hover:border-accent/30"
                     >
+                      {/* Header row with viral score */}
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="flex items-center gap-2">
+                          <span className="flex h-7 w-7 items-center justify-center rounded-lg bg-accent/10 text-xs font-bold text-accent">
+                            {index + 1}
+                          </span>
+                          {vClip.viralScore && (
+                            <span className="inline-flex items-center gap-1.5 rounded-full border border-success/20 bg-success/10 px-3 py-1 text-xs font-semibold text-success">
+                              <Zap className="h-3 w-3" />
+                              {vClip.viralScore}% viral
+                            </span>
+                          )}
+                        </div>
+                        <span className="whitespace-nowrap rounded-full bg-muted px-2.5 py-1 text-[11px] text-muted-foreground">
+                          TikTok / Reels / Shorts
+                        </span>
+                      </div>
+
                       {/* Video preview */}
                       {vizardUrl ? (
-                        <div className="relative overflow-hidden rounded-xl">
+                        <div className="relative mt-4 overflow-hidden rounded-xl">
                           <video
                             src={vizardUrl}
                             controls
@@ -463,169 +470,91 @@ export default function Home() {
                           />
                         </div>
                       ) : (
-                        <div className="flex h-48 items-center justify-center rounded-xl bg-muted">
-                          <Video className="h-8 w-8 text-muted-foreground" />
+                        <div className="relative mt-4 flex h-40 items-center justify-center overflow-hidden rounded-xl bg-muted">
+                          <div className="flex flex-col items-center gap-2 text-muted-foreground">
+                            <Video className="h-8 w-8" />
+                            <span className="text-xs">Video preview</span>
+                          </div>
                         </div>
                       )}
 
-                      {/* Title + metadata row */}
-                      <div className="mt-4 flex items-start justify-between gap-2">
-                        <h3 className="text-balance text-base font-semibold leading-snug text-foreground">
-                          {vClip.title || `Clip ${index + 1}`}
-                        </h3>
-                        {vClip.viralScore && (
-                          <span className="inline-flex shrink-0 items-center gap-1 rounded-full border border-success/20 bg-success/10 px-2.5 py-1 text-xs font-semibold text-success">
-                            <Zap className="h-3 w-3" />
-                            {vClip.viralScore}%
-                          </span>
-                        )}
-                      </div>
+                      {/* Title */}
+                      <h3 className="mt-4 text-balance text-lg font-semibold leading-snug text-foreground">
+                        {vClip.title || `Clip ${index + 1}`}
+                      </h3>
 
-                      {/* Duration + timestamp */}
-                      {(vClip.duration || vClip.startTime) && (
-                        <div className="mt-2 flex items-center gap-3 text-xs text-muted-foreground">
-                          {vClip.duration && (
-                            <span className="flex items-center gap-1">
-                              <Clock className="h-3.5 w-3.5" />
-                              {Math.round(vClip.duration)}s
-                            </span>
-                          )}
-                          {vClip.startTime && vClip.endTime && (
-                            <span>
-                              {vClip.startTime} &ndash; {vClip.endTime}
-                            </span>
-                          )}
+                      {/* Duration */}
+                      {vClip.duration && (
+                        <div className="mt-2 flex items-center gap-1.5 text-xs text-muted-foreground">
+                          <Clock className="h-3.5 w-3.5" />
+                          {Math.round(vClip.duration)}s
                         </div>
                       )}
 
-                      {/* Show Analysis toggle */}
-                      <button
-                        onClick={toggleExpand}
-                        className="mt-3 flex w-full items-center justify-between rounded-lg border border-border bg-muted/50 px-3 py-2 text-xs font-medium text-muted-foreground transition-colors hover:border-accent/30 hover:text-foreground"
-                      >
-                        <span>
-                          {isExpanded ? "Hide Analysis" : "Show Analysis"}
-                        </span>
-                        <ChevronDown
-                          className={`h-3.5 w-3.5 transition-transform duration-200 ${
-                            isExpanded ? "rotate-180" : ""
-                          }`}
-                        />
-                      </button>
+                      {/* Transcript snippet - always visible */}
+                      {vClip.transcript && (
+                        <div className="mt-4 rounded-xl border border-border bg-muted/50 p-4">
+                          <p className="flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+                            <MessageSquareQuote className="h-3.5 w-3.5" />
+                            Transcript Snippet
+                          </p>
+                          <p className="mt-2 text-sm italic leading-relaxed text-muted-foreground">
+                            &quot;{vClip.transcript}&quot;
+                          </p>
+                        </div>
+                      )}
 
-                      {/* Expandable details */}
-                      <AnimatePresence>
-                        {isExpanded && (
-                          <motion.div
-                            initial={{ height: 0, opacity: 0 }}
-                            animate={{ height: "auto", opacity: 1 }}
-                            exit={{ height: 0, opacity: 0 }}
-                            transition={{ duration: 0.25 }}
-                            className="overflow-hidden"
-                          >
-                            <div className="mt-3 flex flex-col gap-3">
-                              {/* Viral Score */}
-                              {vClip.viralScore && (
-                                <div className="rounded-xl border border-border bg-muted/30 p-3">
-                                  <p className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
-                                    Viral Score
-                                  </p>
-                                  <div className="mt-1.5 flex items-center gap-2">
-                                    <div className="h-2 flex-1 overflow-hidden rounded-full bg-muted">
-                                      <div
-                                        className="h-full rounded-full bg-accent transition-all"
-                                        style={{
-                                          width: `${vClip.viralScore}%`,
-                                        }}
-                                      />
-                                    </div>
-                                    <span className="text-sm font-bold text-foreground">
-                                      {vClip.viralScore}%
-                                    </span>
-                                  </div>
-                                </div>
-                              )}
+                      {/* Why AI selected - always visible */}
+                      {vClip.reason && (
+                        <div className="mt-4">
+                          <p className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+                            Why AI selected this clip
+                          </p>
+                          <p className="mt-1.5 text-sm leading-relaxed text-muted-foreground">
+                            {vClip.reason}
+                          </p>
+                        </div>
+                      )}
 
-                              {/* Transcript snippet */}
-                              {vClip.transcript && (
-                                <div className="rounded-xl border border-border bg-muted/30 p-3">
-                                  <p className="flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
-                                    <MessageSquareQuote className="h-3.5 w-3.5" />
-                                    Transcript Snippet
-                                  </p>
-                                  <p className="mt-1.5 text-sm italic leading-relaxed text-muted-foreground">
-                                    &quot;{vClip.transcript}&quot;
-                                  </p>
-                                </div>
-                              )}
+                      {/* Generated hook - always visible */}
+                      {vClip.caption && (
+                        <div className="mt-4">
+                          <p className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+                            Generated Hook / Caption
+                          </p>
+                          <p className="mt-1.5 text-sm leading-relaxed text-foreground/80">
+                            {vClip.caption}
+                          </p>
+                        </div>
+                      )}
 
-                              {/* Why AI selected */}
-                              {vClip.reason && (
-                                <div className="rounded-xl border border-border bg-muted/30 p-3">
-                                  <p className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
-                                    Why AI Selected This
-                                  </p>
-                                  <p className="mt-1.5 text-sm leading-relaxed text-muted-foreground">
-                                    {vClip.reason}
-                                  </p>
-                                </div>
-                              )}
-
-                              {/* Generated hook/caption */}
-                              {vClip.caption && (
-                                <div className="rounded-xl border border-border bg-muted/30 p-3">
-                                  <div className="flex items-center justify-between">
-                                    <p className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
-                                      Generated Hook / Caption
-                                    </p>
-                                    <button
-                                      onClick={() =>
-                                        copyText(vClip.caption || "")
-                                      }
-                                      className="rounded p-1 text-muted-foreground transition-colors hover:text-foreground"
-                                      title="Copy caption"
-                                    >
-                                      <Copy className="h-3 w-3" />
-                                    </button>
-                                  </div>
-                                  <p className="mt-1.5 text-sm leading-relaxed text-foreground/80">
-                                    {vClip.caption}
-                                  </p>
-                                </div>
-                              )}
-
-                              {/* Hashtags */}
-                              {vClip.hashtags && vClip.hashtags.length > 0 && (
-                                <div className="flex flex-wrap gap-1.5">
-                                  {vClip.hashtags.map((tag, i) => (
-                                    <span
-                                      key={i}
-                                      className="flex items-center gap-1 rounded-full bg-accent/10 px-2.5 py-1 text-xs font-medium text-accent"
-                                    >
-                                      <Hash className="h-3 w-3" />
-                                      {tag.replace("#", "")}
-                                    </span>
-                                  ))}
-                                </div>
-                              )}
-                            </div>
-                          </motion.div>
-                        )}
-                      </AnimatePresence>
+                      {/* Hashtags - always visible */}
+                      {vClip.hashtags && vClip.hashtags.length > 0 && (
+                        <div className="mt-4 flex flex-wrap gap-1.5">
+                          {vClip.hashtags.map((tag, i) => (
+                            <span
+                              key={i}
+                              className="rounded-full bg-accent/10 px-2.5 py-1 text-xs font-medium text-accent"
+                            >
+                              {tag.startsWith("#") ? tag : `#${tag}`}
+                            </span>
+                          ))}
+                        </div>
+                      )}
 
                       {/* Actions */}
-                      <div className="mt-4 flex flex-wrap gap-2">
+                      <div className="mt-5 flex flex-wrap gap-2">
                         <button
                           onClick={() =>
                             setApprovedClips((prev) => [...prev, index])
                           }
-                          className={`flex items-center gap-1.5 rounded-lg px-3 py-2 text-xs font-semibold transition-all ${
+                          className={`flex items-center gap-1.5 rounded-lg px-4 py-2 text-xs font-semibold transition-all ${
                             approvedClips.includes(index)
                               ? "bg-success text-accent-foreground"
                               : "bg-foreground text-background hover:bg-foreground/90"
                           }`}
                         >
-                          <Check className="h-3 w-3" />
+                          <Check className="h-3.5 w-3.5" />
                           {approvedClips.includes(index)
                             ? "Approved"
                             : "Approve"}
@@ -636,10 +565,32 @@ export default function Home() {
                             href={vizardUrl}
                             target="_blank"
                             rel="noopener noreferrer"
-                            className="flex items-center gap-1.5 rounded-lg border border-border bg-muted px-3 py-2 text-xs font-semibold text-foreground transition-colors hover:bg-muted/80"
+                            className="flex items-center gap-1.5 rounded-lg border border-border bg-muted px-4 py-2 text-xs font-semibold text-foreground transition-colors hover:bg-muted/80"
                           >
                             Download
                           </a>
+                        )}
+
+                        {vClip.caption && (
+                          <button
+                            onClick={() => copyText(vClip.caption || "")}
+                            className="flex items-center gap-1.5 rounded-lg border border-border px-4 py-2 text-xs font-medium text-muted-foreground transition-colors hover:border-accent/40 hover:text-foreground"
+                          >
+                            <Copy className="h-3.5 w-3.5" />
+                            Copy Hook
+                          </button>
+                        )}
+
+                        {vClip.hashtags && vClip.hashtags.length > 0 && (
+                          <button
+                            onClick={() =>
+                              copyText(vClip.hashtags?.join(" ") || "")
+                            }
+                            className="flex items-center gap-1.5 rounded-lg border border-border px-4 py-2 text-xs font-medium text-muted-foreground transition-colors hover:border-accent/40 hover:text-foreground"
+                          >
+                            <Hash className="h-3.5 w-3.5" />
+                            Copy Hashtags
+                          </button>
                         )}
                       </div>
                     </motion.div>
