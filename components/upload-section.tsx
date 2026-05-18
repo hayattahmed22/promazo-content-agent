@@ -1,15 +1,19 @@
 "use client";
 
-import { Upload, Link, Sparkles, Loader2, FileVideo, Mic, Wand2 } from "lucide-react";
+import { Upload, Link, Sparkles, Loader2, FileVideo, Mic, Wand2, Brain } from "lucide-react";
 import { type ChangeEvent } from "react";
 
-const PROMPT_PRESETS = [
-  { label: "Funniest moments", value: "Find the funniest and most entertaining moments" },
-  { label: "Business advice", value: "Focus on the best business advice and actionable tips" },
-  { label: "Emotional stories", value: "Find emotional storytelling and personal moments" },
-  { label: "Gen Z viral", value: "Generate clips optimized for Gen Z viral content" },
-  { label: "Technical insights", value: "Find technical insights and educational content" },
-  { label: "Hot takes", value: "Focus on controversial or bold opinions" },
+const AI_DIRECTION_PRESETS = [
+  { emoji: "🎭", label: "Emotional stories", value: "Find emotional storytelling and deeply personal moments" },
+  { emoji: "💰", label: "Money advice", value: "Focus on financial advice, money tips, and wealth-building insights" },
+  { emoji: "🧠", label: "Technical insights", value: "Find technical insights, deep explanations, and educational content" },
+  { emoji: "🔥", label: "Controversial takes", value: "Focus on controversial opinions, bold statements, and hot takes" },
+  { emoji: "😂", label: "Funny moments", value: "Find the funniest and most entertaining moments" },
+  { emoji: "📈", label: "Gen Z viral hooks", value: "Generate clips optimized for Gen Z viral content with strong hooks" },
+  { emoji: "🎤", label: "Interviewee story", value: "Focus on the guest's personal stories and unique experiences" },
+  { emoji: "🚀", label: "Startup advice", value: "Find startup and business advice for entrepreneurs" },
+  { emoji: "❤️", label: "Life advice", value: "Find relatable life advice and wisdom" },
+  { emoji: "🎬", label: "Cinematic moments", value: "Focus on cinematic storytelling and visually compelling moments" },
 ];
 
 interface UploadSectionProps {
@@ -110,55 +114,89 @@ export function UploadSection({
           </p>
         )}
 
-        {/* AI Prompt Steering */}
-        <div className="mt-2 rounded-xl border border-border bg-muted/30 p-4">
-          <div className="flex items-center gap-2 mb-3">
-            <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-accent/10 text-accent">
-              <Wand2 className="h-4 w-4" />
+        {/* AI Direction - Premium Feature */}
+        <div className="group relative mt-4 overflow-hidden rounded-2xl border border-accent/20 bg-gradient-to-br from-accent/5 via-background to-accent/10 p-5">
+          {/* Animated glow effect */}
+          <div className="pointer-events-none absolute -inset-px rounded-2xl bg-gradient-to-r from-accent/20 via-transparent to-accent/20 opacity-0 blur-sm transition-opacity duration-500 group-hover:opacity-100" />
+          
+          {/* Header */}
+          <div className="relative flex items-center gap-3 mb-4">
+            <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-gradient-to-br from-accent to-accent/70 text-accent-foreground shadow-lg shadow-accent/25">
+              <Brain className="h-5 w-5" />
             </div>
             <div>
-              <p className="text-sm font-medium text-foreground">AI Clip Focus</p>
-              <p className="text-xs text-muted-foreground">Guide what type of clips to prioritize</p>
+              <h3 className="text-base font-semibold text-foreground">
+                What should the AI focus on?
+              </h3>
+              <p className="text-xs text-muted-foreground">
+                Guide your AI content strategist toward the best moments
+              </p>
             </div>
           </div>
           
-          {/* Quick preset chips */}
-          <div className="flex flex-wrap gap-2 mb-3">
-            {PROMPT_PRESETS.map((preset) => (
-              <button
-                key={preset.label}
-                type="button"
-                onClick={() => onAiPromptChange(preset.value)}
-                className={`rounded-full px-3 py-1.5 text-xs font-medium transition-all ${
-                  aiPrompt === preset.value
-                    ? "bg-accent text-accent-foreground shadow-sm"
-                    : "bg-muted text-muted-foreground hover:bg-muted/80 hover:text-foreground"
-                }`}
-              >
-                {preset.label}
-              </button>
-            ))}
+          {/* Direction chips grid */}
+          <div className="relative grid grid-cols-2 gap-2 mb-4">
+            {AI_DIRECTION_PRESETS.map((preset) => {
+              const isSelected = aiPrompt === preset.value;
+              return (
+                <button
+                  key={preset.label}
+                  type="button"
+                  onClick={() => onAiPromptChange(isSelected ? "" : preset.value)}
+                  className={`group/chip relative flex items-center gap-2 rounded-xl px-3 py-2.5 text-left text-sm font-medium transition-all duration-200 ${
+                    isSelected
+                      ? "bg-accent text-accent-foreground shadow-md shadow-accent/30 scale-[1.02]"
+                      : "bg-muted/60 text-foreground hover:bg-muted hover:shadow-sm hover:scale-[1.01]"
+                  }`}
+                >
+                  <span className={`text-base transition-transform duration-200 ${isSelected ? "scale-110" : "group-hover/chip:scale-110"}`}>
+                    {preset.emoji}
+                  </span>
+                  <span className="truncate">{preset.label}</span>
+                  {isSelected && (
+                    <span className="ml-auto flex h-5 w-5 items-center justify-center rounded-full bg-accent-foreground/20">
+                      <svg className="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}>
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+                      </svg>
+                    </span>
+                  )}
+                </button>
+              );
+            })}
           </div>
 
-          {/* Custom prompt input */}
+          {/* Custom direction input */}
           <div className="relative">
+            <div className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground">
+              <Wand2 className="h-4 w-4" />
+            </div>
             <input
               type="text"
-              placeholder="Or type a custom focus: e.g., 'Find marketing tips for SaaS founders'"
+              placeholder="Or type your own AI direction..."
               value={aiPrompt}
               onChange={(e) => onAiPromptChange(e.target.value)}
-              className="w-full rounded-lg border border-border bg-input py-2.5 px-3 text-sm text-foreground outline-none ring-ring transition-all placeholder:text-muted-foreground focus:border-accent/50 focus:ring-2 focus:ring-accent/20"
+              className="w-full rounded-xl border border-border bg-input/80 py-3 pl-10 pr-16 text-sm text-foreground outline-none ring-ring transition-all placeholder:text-muted-foreground focus:border-accent/50 focus:bg-input focus:ring-2 focus:ring-accent/20"
             />
             {aiPrompt && (
               <button
                 type="button"
                 onClick={() => onAiPromptChange("")}
-                className="absolute right-2 top-1/2 -translate-y-1/2 rounded-md px-2 py-1 text-xs text-muted-foreground hover:text-foreground"
+                className="absolute right-2 top-1/2 -translate-y-1/2 rounded-lg bg-muted px-2.5 py-1 text-xs font-medium text-muted-foreground transition-colors hover:bg-muted/80 hover:text-foreground"
               >
                 Clear
               </button>
             )}
           </div>
+
+          {/* Selected direction indicator */}
+          {aiPrompt && (
+            <div className="mt-3 flex items-start gap-2 rounded-lg bg-accent/10 px-3 py-2">
+              <Sparkles className="mt-0.5 h-3.5 w-3.5 text-accent shrink-0" />
+              <p className="text-xs text-accent">
+                <strong>AI Direction:</strong> {aiPrompt.length > 60 ? aiPrompt.substring(0, 60) + "..." : aiPrompt}
+              </p>
+            </div>
+          )}
         </div>
 
         {/* Podcast Mode Toggle */}
