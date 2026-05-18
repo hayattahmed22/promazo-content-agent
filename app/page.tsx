@@ -679,6 +679,48 @@ export default function Home() {
       const submitData = await submitResponse.json();
 
       if (!submitResponse.ok) {
+        // Vizard credits exhausted → fall back to Claude analysis if YouTube link
+        if (submitData.outOfCredits) {
+          const isYouTube =
+            urlToUse.includes("youtube.com") || urlToUse.includes("youtu.be");
+
+          if (isYouTube) {
+            setVizardStatus("");
+            setVizardLoading(false);
+            setVizardProgress(0);
+            setLoading(true);
+            setErrorMessage(
+              "Vizard credits depleted — generating AI clip suggestions instead (timestamps + hooks, no rendered video)."
+            );
+
+            try {
+              const fd = new FormData();
+              fd.append("videoUrl", urlToUse);
+              const r = await fetch("/api/analyze", { method: "POST", body: fd });
+              const d = await r.json();
+              if (r.ok && d.clips) {
+                setClips(d.clips);
+                setErrorMessage(
+                  "Showing AI-suggested moments. Top up Vizard credits to render full vertical clips with subtitles."
+                );
+              } else {
+                setErrorMessage(d.error || "Fallback analysis failed.");
+              }
+            } catch {
+              setErrorMessage("Fallback analysis failed.");
+            } finally {
+              setLoading(false);
+            }
+            return;
+          }
+
+          setErrorMessage(submitData.error);
+          setVizardStatus("");
+          setVizardLoading(false);
+          setVizardProgress(0);
+          return;
+        }
+
         const errorMsg = submitData.error || "Vizard submit failed.";
         setErrorMessage(errorMsg);
         setVizardStatus("");
@@ -714,7 +756,8 @@ export default function Home() {
       let pollCount = 0;
 
       const getPollingInterval = (count: number): number => {
-        if (count < 5) return 10000;  // 10 seconds
+        if (count < 2) return 3000;   // first 2 polls: 3 seconds — catch short videos fast
+        if (count < 6) return 10000;  // next 4 polls: 10 seconds
         if (count < 15) return 15000; // 15 seconds
         return 20000; // 20 seconds
       };

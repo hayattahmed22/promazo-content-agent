@@ -68,6 +68,20 @@ export async function POST(req: NextRequest) {
 
     if (!response.ok || (data.code && data.code !== 2000)) {
       console.error("[vizard] create failed:", data);
+
+      // 4007 = out of Vizard credits/time — flag so the front-end can fall back
+      if (data.code === 4007) {
+        return NextResponse.json(
+          {
+            error:
+              "Vizard credits are used up. Falling back to AI clip suggestions (timestamps + hooks only — no rendered video).",
+            outOfCredits: true,
+            code: 4007,
+          },
+          { status: 402 }
+        );
+      }
+
       return NextResponse.json(
         { error: data.errMsg || "Vizard submit failed", details: data },
         { status: 500 }
