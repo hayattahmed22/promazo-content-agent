@@ -1,7 +1,16 @@
 "use client";
 
-import { Upload, Link, Sparkles, Loader2, FileVideo, Mic } from "lucide-react";
+import { Upload, Link, Sparkles, Loader2, FileVideo, Mic, Wand2 } from "lucide-react";
 import { type ChangeEvent } from "react";
+
+const PROMPT_PRESETS = [
+  { label: "Funniest moments", value: "Find the funniest and most entertaining moments" },
+  { label: "Business advice", value: "Focus on the best business advice and actionable tips" },
+  { label: "Emotional stories", value: "Find emotional storytelling and personal moments" },
+  { label: "Gen Z viral", value: "Generate clips optimized for Gen Z viral content" },
+  { label: "Technical insights", value: "Find technical insights and educational content" },
+  { label: "Hot takes", value: "Focus on controversial or bold opinions" },
+];
 
 interface UploadSectionProps {
   file: File | null;
@@ -10,9 +19,11 @@ interface UploadSectionProps {
   loading: boolean;
   vizardLoading: boolean;
   podcastMode: boolean;
+  aiPrompt: string;
   onFileChange: (e: ChangeEvent<HTMLInputElement>) => void;
   onLinkChange: (value: string) => void;
   onPodcastModeChange: (enabled: boolean) => void;
+  onAiPromptChange: (prompt: string) => void;
   onAnalyze: () => void;
 }
 
@@ -23,9 +34,11 @@ export function UploadSection({
   loading,
   vizardLoading,
   podcastMode,
+  aiPrompt,
   onFileChange,
   onLinkChange,
   onPodcastModeChange,
+  onAiPromptChange,
   onAnalyze,
 }: UploadSectionProps) {
   const isProcessing = loading || vizardLoading;
@@ -96,6 +109,57 @@ export function UploadSection({
             Video link added successfully
           </p>
         )}
+
+        {/* AI Prompt Steering */}
+        <div className="mt-2 rounded-xl border border-border bg-muted/30 p-4">
+          <div className="flex items-center gap-2 mb-3">
+            <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-accent/10 text-accent">
+              <Wand2 className="h-4 w-4" />
+            </div>
+            <div>
+              <p className="text-sm font-medium text-foreground">AI Clip Focus</p>
+              <p className="text-xs text-muted-foreground">Guide what type of clips to prioritize</p>
+            </div>
+          </div>
+          
+          {/* Quick preset chips */}
+          <div className="flex flex-wrap gap-2 mb-3">
+            {PROMPT_PRESETS.map((preset) => (
+              <button
+                key={preset.label}
+                type="button"
+                onClick={() => onAiPromptChange(preset.value)}
+                className={`rounded-full px-3 py-1.5 text-xs font-medium transition-all ${
+                  aiPrompt === preset.value
+                    ? "bg-accent text-accent-foreground shadow-sm"
+                    : "bg-muted text-muted-foreground hover:bg-muted/80 hover:text-foreground"
+                }`}
+              >
+                {preset.label}
+              </button>
+            ))}
+          </div>
+
+          {/* Custom prompt input */}
+          <div className="relative">
+            <input
+              type="text"
+              placeholder="Or type a custom focus: e.g., 'Find marketing tips for SaaS founders'"
+              value={aiPrompt}
+              onChange={(e) => onAiPromptChange(e.target.value)}
+              className="w-full rounded-lg border border-border bg-input py-2.5 px-3 text-sm text-foreground outline-none ring-ring transition-all placeholder:text-muted-foreground focus:border-accent/50 focus:ring-2 focus:ring-accent/20"
+            />
+            {aiPrompt && (
+              <button
+                type="button"
+                onClick={() => onAiPromptChange("")}
+                className="absolute right-2 top-1/2 -translate-y-1/2 rounded-md px-2 py-1 text-xs text-muted-foreground hover:text-foreground"
+              >
+                Clear
+              </button>
+            )}
+          </div>
+        </div>
 
         {/* Podcast Mode Toggle */}
         <div className="mt-2 flex items-center justify-between rounded-xl border border-border bg-muted/30 px-4 py-3">

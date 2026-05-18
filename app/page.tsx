@@ -54,6 +54,10 @@ export default function Home() {
 
   // Podcast mode - bias toward later clips for long-form content
   const [podcastMode, setPodcastMode] = useState(false);
+
+  // AI Prompt steering - guide clip selection focus
+  const [aiPrompt, setAiPrompt] = useState("");
+
   // History state
   const [historyOpen, setHistoryOpen] = useState(false);
   const [history, setHistory] = useState<HistoryEntry[]>([]);
@@ -489,7 +493,6 @@ export default function Home() {
     
     // Check Vizard status code - 1000 means still processing
     if (d.code === 1000) {
-      console.log("[v0] Vizard still processing (code 1000)");
       return [];
     }
 
@@ -497,10 +500,15 @@ export default function Home() {
     const rawClips: Record<string, unknown>[] =
       (d.videos as Record<string, unknown>[]) ?? [];
 
-    console.log("[v0] Found", rawClips.length, "raw clips from Vizard");
-
     // Get total video duration for timeline percentage calculation
     const videoDurationMs = (d.videoDuration as number) ?? (d.videoMsDuration as number) ?? 0;
+
+    // Extract keywords from AI prompt for relevance scoring
+    const promptKeywords = aiPrompt
+      .toLowerCase()
+      .split(/\s+/)
+      .filter((word) => word.length > 3)
+      .filter((word) => !["find", "focus", "generate", "clips", "moments", "best", "content", "the", "and", "for", "with"].includes(word));
 
     // Normalize Vizard API fields into our VizardClip shape
     const normalized: VizardClip[] = rawClips.map((c) => {
@@ -537,45 +545,66 @@ export default function Home() {
       };
     });
 
-    // Podcast Mode: Bias toward later clips (last 50-60% of video)
-    // Still allow early clips if they have very high viral scores (85%+)
-    if (podcastMode && videoDurationMs > 0) {
-      console.log("[v0] Podcast Mode enabled - weighting later clips");
+    // Calculate relevance score based on AI prompt keywords
+    const calculatePromptRelevance = (clip: VizardClip): number => {
+      if (!promptKeywords.length) return 0;
       
-      const scoredClips = normalized.map((clip) => {
+      const searchText = [
+        clip.title,
+        clip.transcript,
+        clip.reason,
+        clip.caption,
+        ...(clip.hashtags || []),
+      ]
+        .filter(Boolean)
+        .join(" ")
+        .toLowerCase();
+
+      let matches = 0;
+      for (const keyword of promptKeywords) {
+        if (searchText.includes(keyword)) {
+          matches++;
+        }
+      }
+      
+      // Return 0-20 bonus points based on keyword match percentage
+      return Math.round((matches / promptKeywords.length) * 20);
+    };
+
+    // Apply scoring with AI prompt relevance and optional podcast mode
+    const scoredClips = normalized.map((clip) => {
+      const baseScore = clip.viralScore ?? 50;
+      const promptBonus = calculatePromptRelevance(clip);
+      
+      let timelineWeight = 1.0;
+      
+      // Podcast Mode: Bias toward later clips
+      if (podcastMode && videoDurationMs > 0) {
         const startMs = clip.startTimeMs ?? 0;
-        const timelinePosition = startMs / videoDurationMs; // 0.0 to 1.0
-        const baseScore = clip.viralScore ?? 50;
+        const timelinePosition = startMs / videoDurationMs;
+        timelineWeight = 0.6 + (0.8 * timelinePosition);
         
-        // Timeline weight: clips in second half get bonus
-        // Position 0.0 (start) = 0.6x weight, Position 1.0 (end) = 1.4x weight
-        // Linear interpolation: weight = 0.6 + (0.8 * position)
-        const timelineWeight = 0.6 + (0.8 * timelinePosition);
-        
-        // Exception: Very high viral scores (85%+) from early content still rank well
-        const isHighViral = baseScore >= 85;
-        const effectiveWeight = isHighViral ? Math.max(timelineWeight, 1.0) : timelineWeight;
-        
-        const adjustedScore = Math.round(baseScore * effectiveWeight);
-        
-        return {
-          ...clip,
-          adjustedScore,
-          timelinePosition,
-        };
-      });
+        // Very high viral scores bypass timeline penalty
+        if (baseScore >= 85) {
+          timelineWeight = Math.max(timelineWeight, 1.0);
+        }
+      }
+      
+      const adjustedScore = Math.round((baseScore + promptBonus) * timelineWeight);
+      
+      return {
+        ...clip,
+        adjustedScore,
+        promptBonus,
+      };
+    });
 
-      // Sort by adjusted score, take top 6 for podcasts (more variety)
-      return scoredClips
-        .sort((a, b) => b.adjustedScore - a.adjustedScore)
-        .slice(0, 6)
-        .map(({ adjustedScore, timelinePosition, ...clip }) => clip);
-    }
-
-    // Normal mode: Sort by viral score desc, take top 4
-    return normalized
-      .sort((a, b) => (b.viralScore ?? 0) - (a.viralScore ?? 0))
-      .slice(0, 4);
+    // Sort by adjusted score, take top clips
+    const maxClips = podcastMode ? 6 : 4;
+    return scoredClips
+      .sort((a, b) => b.adjustedScore - a.adjustedScore)
+      .slice(0, maxClips)
+      .map(({ adjustedScore, promptBonus, ...clip }) => clip);
   };
 
   const generateVideo = async (overrideUrl?: string) => {
@@ -796,9 +825,11 @@ export default function Home() {
             loading={loading}
             vizardLoading={vizardLoading}
             podcastMode={podcastMode}
+            aiPrompt={aiPrompt}
             onFileChange={handleFileChange}
             onLinkChange={handleLinkChange}
             onPodcastModeChange={setPodcastMode}
+            onAiPromptChange={setAiPrompt}
             onAnalyze={analyzeContent}
           />
         </motion.div>
