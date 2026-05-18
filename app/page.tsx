@@ -30,6 +30,8 @@ type VizardClip = {
   viralScore?: number;
   startTime?: string;
   endTime?: string;
+  startTimeMs?: number;
+  endTimeMs?: number;
   transcript?: string;
   reason?: string;
   caption?: string;
@@ -43,11 +45,18 @@ export default function Home() {
   const [loading, setLoading] = useState(false);
   const [vizardLoading, setVizardLoading] = useState(false);
   const [vizardStatus, setVizardStatus] = useState("");
+  const [vizardProgress, setVizardProgress] = useState(0);
   const [clips, setClips] = useState<Clip[]>([]);
   const [vizardClips, setVizardClips] = useState<VizardClip[]>([]);
   const [approvedClips, setApprovedClips] = useState<number[]>([]);
 
   const [errorMessage, setErrorMessage] = useState("");
+
+  // Podcast mode - bias toward later clips for long-form content
+  const [podcastMode, setPodcastMode] = useState(false);
+
+  // AI Prompt steering - guide clip selection focus
+  const [aiPrompt, setAiPrompt] = useState("");
 
   // History state
   const [historyOpen, setHistoryOpen] = useState(false);
@@ -60,14 +69,12 @@ export default function Home() {
     
     try {
       const stored = localStorage.getItem("promazo-history");
-      console.log("[v0] Loading history from localStorage:", stored ? "found" : "empty");
       if (stored) {
         const parsed = JSON.parse(stored);
-        console.log("[v0] Parsed history entries:", parsed.length);
         setHistory(parsed);
       }
     } catch (error) {
-      console.error("[v0] Failed to load history:", error);
+      console.error("Failed to load history:", error);
       localStorage.removeItem("promazo-history");
     }
   }, []);
@@ -83,9 +90,8 @@ export default function Home() {
         typeof updater === "function" ? updater(prev) : updater;
       try {
         localStorage.setItem("promazo-history", JSON.stringify(newHistory));
-        console.log("[v0] Saved history to localStorage:", newHistory.length, "entries");
       } catch (error) {
-        console.error("[v0] Failed to save history:", error);
+        console.error("Failed to save history:", error);
       }
       return newHistory;
     });
@@ -189,19 +195,87 @@ export default function Home() {
     });
   };
 
-  // Load a history entry
-  const loadHistoryEntry = (entry: HistoryEntry) => {
-    // Convert history clips back to VizardClip format
-    const loadedClips: VizardClip[] = entry.clips.map((c) => ({
-      title: c.title,
-      videoUrl: c.videoUrl,
-      viralScore: c.viralScore,
-      duration: c.duration,
-    }));
-    setVizardClips(loadedClips);
-    setVideoLink(entry.videoLink);
-    setVizardStatus("Loaded from history");
+  // Load a history entry (and auto-refresh if no clips)
+  const loadHistoryEntry = async (entry: HistoryEntry) => {
     setHistoryOpen(false);
+    setVideoLink(entry.videoLink);
+
+    // If no clips and we have a projectId, fetch fresh data from Vizard
+    if (entry.clips.length === 0 && entry.projectId) {
+      setVizardLoading(true);
+      setVizardStatus("Fetching clips from Vizard...");
+      setVizardClips([]);
+
+      try {
+        const response = await fetch("/api/vizard/status", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ projectId: entry.projectId }),
+        });
+
+        const data = await response.json();
+
+        if (data.code === 2000 && data.videos?.length > 0) {
+          // Clips are ready - parse and display
+          const freshClips: VizardClip[] = data.videos.map(
+            (v: Record<string, unknown>) => ({
+              title: v.title as string,
+              videoUrl: v.videoUrl as string,
+              viralScore: v.viralScore
+                ? Math.round(parseFloat(String(v.viralScore)) * 10)
+                : undefined,
+              duration: v.videoMsDuration
+                ? (v.videoMsDuration as number) / 1000
+                : undefined,
+            })
+          );
+
+          setVizardClips(freshClips);
+          setVizardStatus("Clips loaded from Vizard");
+          setVizardLoading(false);
+
+          // Also update the history entry with the fresh clips
+          saveHistory((prev) =>
+            prev.map((h) =>
+              h.id === entry.id
+                ? {
+                    ...h,
+                    projectName: data.projectName || h.projectName,
+                    status: "ready" as const,
+                    clips: freshClips.map((c) => ({
+                      title: c.title,
+                      videoUrl: c.videoUrl,
+                      viralScore: c.viralScore,
+                      duration: c.duration,
+                    })),
+                  }
+                : h
+            )
+          );
+        } else if (data.code === 1000) {
+          // Still processing
+          setVizardStatus("Vizard is still processing this video. Try again later.");
+          setVizardLoading(false);
+        } else {
+          setVizardStatus("Could not fetch clips. The project may have expired.");
+          setVizardLoading(false);
+        }
+      } catch (error) {
+        console.error("Failed to fetch clips:", error);
+        setVizardStatus("Failed to fetch clips from Vizard.");
+        setVizardLoading(false);
+      }
+    } else {
+      // We have clips - just load them
+      const loadedClips: VizardClip[] = entry.clips.map((c) => ({
+        title: c.title,
+        videoUrl: c.videoUrl,
+        viralScore: c.viralScore,
+        duration: c.duration,
+      }));
+      setVizardClips(loadedClips);
+      setVizardStatus("Loaded from history");
+    }
   };
 
   // Refresh a history entry from Vizard API
@@ -419,7 +493,6 @@ export default function Home() {
     
     // Check Vizard status code - 1000 means still processing
     if (d.code === 1000) {
-      console.log("[v0] Vizard still processing (code 1000)");
       return [];
     }
 
@@ -427,7 +500,15 @@ export default function Home() {
     const rawClips: Record<string, unknown>[] =
       (d.videos as Record<string, unknown>[]) ?? [];
 
-    console.log("[v0] Found", rawClips.length, "raw clips from Vizard");
+    // Get total video duration for timeline percentage calculation
+    const videoDurationMs = (d.videoDuration as number) ?? (d.videoMsDuration as number) ?? 0;
+
+    // Extract keywords from AI prompt for relevance scoring
+    const promptKeywords = aiPrompt
+      .toLowerCase()
+      .split(/\s+/)
+      .filter((word) => word.length > 3)
+      .filter((word) => !["find", "focus", "generate", "clips", "moments", "best", "content", "the", "and", "for", "with"].includes(word));
 
     // Normalize Vizard API fields into our VizardClip shape
     const normalized: VizardClip[] = rawClips.map((c) => {
@@ -455,6 +536,8 @@ export default function Home() {
         viralScore: c.viralScore
           ? Math.round(parseFloat(String(c.viralScore)) * 10)
           : undefined,
+        startTimeMs: (c.startMsTime as number) ?? (c.startTimeMs as number) ?? undefined,
+        endTimeMs: (c.endMsTime as number) ?? (c.endTimeMs as number) ?? undefined,
         transcript: (c.transcript as string) || undefined,
         reason: (c.viralReason as string) || (c.reason as string) || undefined,
         caption: (c.caption as string) || undefined,
@@ -462,10 +545,66 @@ export default function Home() {
       };
     });
 
-    // Sort by viral score desc, take top 4
-    return normalized
-      .sort((a, b) => (b.viralScore ?? 0) - (a.viralScore ?? 0))
-      .slice(0, 4);
+    // Calculate relevance score based on AI prompt keywords
+    const calculatePromptRelevance = (clip: VizardClip): number => {
+      if (!promptKeywords.length) return 0;
+      
+      const searchText = [
+        clip.title,
+        clip.transcript,
+        clip.reason,
+        clip.caption,
+        ...(clip.hashtags || []),
+      ]
+        .filter(Boolean)
+        .join(" ")
+        .toLowerCase();
+
+      let matches = 0;
+      for (const keyword of promptKeywords) {
+        if (searchText.includes(keyword)) {
+          matches++;
+        }
+      }
+      
+      // Return 0-20 bonus points based on keyword match percentage
+      return Math.round((matches / promptKeywords.length) * 20);
+    };
+
+    // Apply scoring with AI prompt relevance and optional podcast mode
+    const scoredClips = normalized.map((clip) => {
+      const baseScore = clip.viralScore ?? 50;
+      const promptBonus = calculatePromptRelevance(clip);
+      
+      let timelineWeight = 1.0;
+      
+      // Podcast Mode: Bias toward later clips
+      if (podcastMode && videoDurationMs > 0) {
+        const startMs = clip.startTimeMs ?? 0;
+        const timelinePosition = startMs / videoDurationMs;
+        timelineWeight = 0.6 + (0.8 * timelinePosition);
+        
+        // Very high viral scores bypass timeline penalty
+        if (baseScore >= 85) {
+          timelineWeight = Math.max(timelineWeight, 1.0);
+        }
+      }
+      
+      const adjustedScore = Math.round((baseScore + promptBonus) * timelineWeight);
+      
+      return {
+        ...clip,
+        adjustedScore,
+        promptBonus,
+      };
+    });
+
+    // Sort by adjusted score, take top clips
+    const maxClips = podcastMode ? 6 : 4;
+    return scoredClips
+      .sort((a, b) => b.adjustedScore - a.adjustedScore)
+      .slice(0, maxClips)
+      .map(({ adjustedScore, promptBonus, ...clip }) => clip);
   };
 
   const generateVideo = async (overrideUrl?: string) => {
@@ -479,11 +618,13 @@ export default function Home() {
     setCurrentVideoLink(urlToUse);
     setErrorMessage("");
     setVizardLoading(true);
-    setVizardStatus("Submitting video to Vizard...");
+    setVizardProgress(0);
+    setVizardStatus("Uploading video to Vizard...");
     setVizardClips([]);
 
     try {
-      console.log("[v0] Submitting to Vizard:", urlToUse);
+      // Stage 1: Submit video
+      setVizardProgress(5);
 
       const submitResponse = await fetch("/api/vizard", {
         method: "POST",
@@ -496,19 +637,17 @@ export default function Home() {
       });
 
       const submitData = await submitResponse.json();
-      console.log("[v0] Vizard submit response:", submitData);
 
       if (!submitResponse.ok) {
         const errorMsg = submitData.error || "Vizard submit failed.";
-        console.error("[v0] Vizard error:", errorMsg);
         setErrorMessage(errorMsg);
         setVizardStatus("");
         setVizardLoading(false);
+        setVizardProgress(0);
         return;
       }
 
       const projectId = findProjectId(submitData);
-      console.log("[v0] Vizard projectId:", projectId);
 
       if (!projectId) {
         setErrorMessage(
@@ -516,20 +655,48 @@ export default function Home() {
         );
         setVizardStatus("");
         setVizardLoading(false);
+        setVizardProgress(0);
         return;
       }
 
       // Save to history immediately with "processing" status
       saveProjectToHistory(urlToUse, String(projectId), "processing");
 
-      setVizardStatus("Vizard is generating captioned short videos...");
+      // Stage 2: Start polling with optimized intervals
+      setVizardProgress(10);
+      setVizardStatus("Transcribing your podcast...");
 
-      for (let i = 0; i < 30; i++) {
-        setVizardStatus(`Checking Vizard progress... attempt ${i + 1}/30`);
+      // Polling configuration:
+      // - First 5 polls: 10 seconds apart (50 sec total) - quick initial checks
+      // - Next 10 polls: 15 seconds apart (150 sec total) - medium pace
+      // - Remaining polls: 20 seconds apart - long content
+      const MAX_POLLS = 40;
+      let pollCount = 0;
 
-        await new Promise((resolve) => setTimeout(resolve, 30000));
+      const getPollingInterval = (count: number): number => {
+        if (count < 5) return 10000;  // 10 seconds
+        if (count < 15) return 15000; // 15 seconds
+        return 20000; // 20 seconds
+      };
 
-        console.log("[v0] Polling Vizard status, attempt", i + 1);
+      // Progress stages based on poll count
+      const getProgressAndStatus = (count: number): { progress: number; status: string } => {
+        if (count < 3) return { progress: 15 + count * 5, status: "Transcribing your podcast..." };
+        if (count < 6) return { progress: 30 + (count - 3) * 5, status: "Analyzing content for viral moments..." };
+        if (count < 10) return { progress: 45 + (count - 6) * 5, status: "Detecting best clip opportunities..." };
+        if (count < 15) return { progress: 65 + (count - 10) * 3, status: "Generating captions & hooks..." };
+        if (count < 25) return { progress: 80 + (count - 15) * 1, status: "Rendering short-form videos..." };
+        return { progress: 90 + Math.min(count - 25, 8), status: "Finalizing clips..." };
+      };
+
+      while (pollCount < MAX_POLLS) {
+        const interval = getPollingInterval(pollCount);
+        await new Promise((resolve) => setTimeout(resolve, interval));
+
+        pollCount++;
+        const { progress, status } = getProgressAndStatus(pollCount);
+        setVizardProgress(progress);
+        setVizardStatus(status);
 
         const statusResponse = await fetch("/api/vizard/status", {
           method: "POST",
@@ -540,43 +707,47 @@ export default function Home() {
         });
 
         const statusData = await statusResponse.json();
-        console.log("[v0] Vizard status response:", statusData);
 
         // Check for Vizard error codes
         if (statusData.code && statusData.code !== 2000 && statusData.code !== 1000) {
-          console.error("[v0] Vizard error code:", statusData.code, statusData.errMsg);
           setErrorMessage(`Vizard error (${statusData.code}): ${statusData.errMsg || "Unknown error"}`);
           setVizardStatus("");
           setVizardLoading(false);
+          setVizardProgress(0);
           return;
         }
 
         const readyClips = findVizardClips(statusData);
 
+        // STOP IMMEDIATELY when clips are ready
         if (readyClips && readyClips.length > 0) {
-          console.log("[v0] Vizard clips ready:", readyClips.length);
+          setVizardProgress(100);
           setVizardClips(readyClips);
           setVizardStatus("Vizard clips are ready.");
           setVizardLoading(false);
-          // Update the history entry with clips (it was saved earlier with "processing" status)
+          // Update the history entry with clips
           updateHistoryWithClips(
             String(projectId),
             readyClips,
             statusData.projectName
           );
-          return;
+          return; // Exit immediately
         }
       }
 
-      setVizardStatus("Still processing. Try again in a few minutes.");
-      setVizardLoading(false);
-    } catch (error) {
-      console.error("[v0] Vizard error:", error);
+      // Timeout after all polls
       setErrorMessage(
-        `Vizard failed: ${error instanceof Error ? error.message : "Unknown error"}. Check console.`
+        "Vizard is taking longer than expected. Your clips may still be processing - check History later."
       );
       setVizardStatus("");
       setVizardLoading(false);
+      setVizardProgress(0);
+    } catch (error) {
+      console.error("Vizard generation error:", error);
+      setErrorMessage("An error occurred during video generation.");
+      setVizardStatus("");
+      setVizardLoading(false);
+      setVizardProgress(0);
     }
   };
 
@@ -653,8 +824,12 @@ export default function Home() {
             videoLink={videoLink}
             loading={loading}
             vizardLoading={vizardLoading}
+            podcastMode={podcastMode}
+            aiPrompt={aiPrompt}
             onFileChange={handleFileChange}
             onLinkChange={handleLinkChange}
+            onPodcastModeChange={setPodcastMode}
+            onAiPromptChange={setAiPrompt}
             onAnalyze={analyzeContent}
           />
         </motion.div>
@@ -665,6 +840,7 @@ export default function Home() {
             loading={loading}
             vizardLoading={vizardLoading}
             vizardStatus={vizardStatus}
+            vizardProgress={vizardProgress}
             errorMessage={errorMessage}
           />
         </div>
