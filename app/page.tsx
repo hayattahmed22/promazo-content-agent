@@ -22,6 +22,7 @@ type Clip = {
 };
 
 type VizardClip = {
+  videoId?: number;
   title?: string;
   videoUrl?: string;
   downloadUrl?: string;
@@ -219,8 +220,11 @@ export default function Home() {
           // Clips are ready - parse and display
           const freshClips: VizardClip[] = data.videos.map(
             (v: Record<string, unknown>) => ({
+              videoId: v.videoId as number,
               title: v.title as string,
               videoUrl: v.videoUrl as string,
+              transcript: v.transcript as string,
+              reason: (v.viralReason as string) || undefined,
               viralScore: v.viralScore
                 ? Math.round(parseFloat(String(v.viralScore)) * 10)
                 : undefined,
@@ -231,8 +235,11 @@ export default function Home() {
           );
 
           setVizardClips(freshClips);
-          setVizardStatus("Clips loaded from Vizard");
+          setVizardStatus("Clips loaded — generating hooks...");
           setVizardLoading(false);
+          generateCaptionsForClips(freshClips).then(() => {
+            setVizardStatus("Clips loaded from Vizard");
+          });
 
           // Also update the history entry with the fresh clips
           saveHistory((prev) =>
@@ -303,8 +310,11 @@ export default function Home() {
         // Update the history entry with fresh data - clips are ready
         const updatedClips = data.videos.map(
           (v: Record<string, unknown>) => ({
+            videoId: v.videoId as number,
             title: v.title as string,
             videoUrl: v.videoUrl as string,
+            transcript: v.transcript as string,
+            reason: (v.viralReason as string) || undefined,
             viralScore: v.viralScore
               ? Math.round(parseFloat(String(v.viralScore)) * 10)
               : undefined,
@@ -523,6 +533,7 @@ export default function Home() {
       }
 
       return {
+        videoId: (c.videoId as number) || undefined,
         title: (c.title as string) || undefined,
         videoUrl: (c.videoUrl as string) || undefined,
         downloadUrl: (c.downloadUrl as string) || undefined,
@@ -605,6 +616,35 @@ export default function Home() {
       .sort((a, b) => b.adjustedScore - a.adjustedScore)
       .slice(0, maxClips)
       .map(({ adjustedScore, promptBonus, ...clip }) => clip);
+  };
+
+  const generateCaptionsForClips = async (clips: VizardClip[]) => {
+    const clipsWithId = clips.filter((c) => c.videoId);
+    if (!clipsWithId.length) return;
+
+    const captionResults = await Promise.allSettled(
+      clipsWithId.map((clip) =>
+        fetch("/api/vizard/caption", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          // TikTok platform (2), Catchy tone (2), First person (0)
+          body: JSON.stringify({ videoId: clip.videoId, platform: 2, tone: 2, voice: 0 }),
+        }).then((r) => r.json())
+      )
+    );
+
+    setVizardClips((prev) =>
+      prev.map((clip) => {
+        if (!clip.videoId) return clip;
+        const idx = clipsWithId.findIndex((c) => c.videoId === clip.videoId);
+        if (idx === -1) return clip;
+        const result = captionResults[idx];
+        if (result.status === "fulfilled" && result.value?.caption) {
+          return { ...clip, caption: result.value.caption };
+        }
+        return clip;
+      })
+    );
   };
 
   const generateVideo = async (overrideUrl?: string) => {
@@ -723,7 +763,7 @@ export default function Home() {
         if (readyClips && readyClips.length > 0) {
           setVizardProgress(100);
           setVizardClips(readyClips);
-          setVizardStatus("Vizard clips are ready.");
+          setVizardStatus("Clips ready — generating hooks & captions...");
           setVizardLoading(false);
           // Update the history entry with clips
           updateHistoryWithClips(
@@ -731,6 +771,10 @@ export default function Home() {
             readyClips,
             statusData.projectName
           );
+          // Auto-generate AI captions/hooks for each clip via Vizard ai-social
+          generateCaptionsForClips(readyClips).then(() => {
+            setVizardStatus("Vizard clips are ready.");
+          });
           return; // Exit immediately
         }
       }

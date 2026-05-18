@@ -93,11 +93,11 @@ async function generateClipsWithClaude(
   transcript: string
 ) {
   const prompt = `
-You are an expert AI content strategist for TikTok, Reels, and YouTube Shorts.
+You are an expert viral content strategist for TikTok, Instagram Reels, and YouTube Shorts.
 
-Analyze this transcript and identify the 3 BEST short-form moments.
+Analyze this transcript and identify the 3 BEST moments most likely to go viral.
 
-Return ONLY valid JSON:
+Return ONLY valid JSON — no markdown, no explanation:
 
 {
   "clips": [
@@ -116,19 +116,22 @@ Return ONLY valid JSON:
 }
 
 Rules:
-- Titles should feel viral.
-- Caption must be ONE short hook sentence.
-- startTime and endTime must be HH:MM:SS.
-- Clip length: 20-60 seconds.
-- Use different viral scores.
+- title: punchy, scroll-stopping, max 10 words.
+- caption: a single hook sentence that opens the video — starts with a pattern interrupt or bold claim. Max 15 words. This is shown as an on-screen overlay at the very start.
+- snippet: the exact transcript excerpt for this moment (1-3 sentences).
+- reason: why this specific moment will perform well (controversy, surprise, actionable, emotional, etc.).
+- startTime / endTime: HH:MM:SS format. Clip length must be 20–90 seconds.
+- timestamp: human-readable e.g. "3:24".
+- hashtags: 4–6 relevant hashtags including the #. No generic ones like #viral.
+- viralScore: integer 1–100 reflecting estimated virality. Use distinct scores.
 
 Transcript:
-${transcript.slice(0, 12000)}
+${transcript.slice(0, 14000)}
 `;
 
   const message = await anthropic.messages.create({
-    model: "claude-haiku-4-5",
-    max_tokens: 1200,
+    model: "claude-sonnet-4-6",
+    max_tokens: 1500,
     messages: [
       {
         role: "user",
