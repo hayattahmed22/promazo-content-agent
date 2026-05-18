@@ -13,13 +13,19 @@ export function Header({ onHistoryClick }: HeaderProps) {
       <div className="mx-auto flex max-w-7xl items-center justify-between px-6 py-4">
         <div className="flex items-center gap-3">
           <Image
-            src="/promazo-logo.png"
+            src="/promazo-icon.png"
             alt="ProMazo"
-            width={140}
-            height={40}
-            className="h-10 w-auto"
+            width={36}
+            height={36}
+            className="h-9 w-9"
             priority
           />
+          <div>
+            <h1 className="text-lg font-semibold tracking-tight text-foreground">
+              ProMazo
+            </h1>
+            <p className="text-xs text-muted-foreground">Content Agent</p>
+          </div>
         </div>
         <div className="flex items-center gap-4">
           <span className="hidden rounded-full border border-border bg-muted px-3 py-1 text-xs text-muted-foreground sm:inline-block">
