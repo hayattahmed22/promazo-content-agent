@@ -1,6 +1,6 @@
 "use client";
 
-import { Upload, Link, Sparkles, Loader2, FileVideo } from "lucide-react";
+import { Upload, Link, Sparkles, Loader2, FileVideo, Mic } from "lucide-react";
 import { type ChangeEvent } from "react";
 
 interface UploadSectionProps {
@@ -9,8 +9,10 @@ interface UploadSectionProps {
   videoLink: string;
   loading: boolean;
   vizardLoading: boolean;
+  podcastMode: boolean;
   onFileChange: (e: ChangeEvent<HTMLInputElement>) => void;
   onLinkChange: (value: string) => void;
+  onPodcastModeChange: (enabled: boolean) => void;
   onAnalyze: () => void;
 }
 
@@ -20,8 +22,10 @@ export function UploadSection({
   videoLink,
   loading,
   vizardLoading,
+  podcastMode,
   onFileChange,
   onLinkChange,
+  onPodcastModeChange,
   onAnalyze,
 }: UploadSectionProps) {
   const isProcessing = loading || vizardLoading;
@@ -91,6 +95,38 @@ export function UploadSection({
             <Link className="h-3 w-3" />
             Video link added successfully
           </p>
+        )}
+
+        {/* Podcast Mode Toggle */}
+        <div className="mt-2 flex items-center justify-between rounded-xl border border-border bg-muted/30 px-4 py-3">
+          <div className="flex items-center gap-3">
+            <div className={`flex h-9 w-9 items-center justify-center rounded-lg transition-colors ${podcastMode ? "bg-accent/20 text-accent" : "bg-muted text-muted-foreground"}`}>
+              <Mic className="h-4 w-4" />
+            </div>
+            <div>
+              <p className="text-sm font-medium text-foreground">Podcast Mode</p>
+              <p className="text-xs text-muted-foreground">
+                Optimizes for long-form content (45+ min)
+              </p>
+            </div>
+          </div>
+          <button
+            type="button"
+            onClick={() => onPodcastModeChange(!podcastMode)}
+            className={`relative h-6 w-11 rounded-full transition-colors ${podcastMode ? "bg-accent" : "bg-muted"}`}
+          >
+            <span
+              className={`absolute top-0.5 left-0.5 h-5 w-5 rounded-full bg-white shadow-sm transition-transform ${podcastMode ? "translate-x-5" : "translate-x-0"}`}
+            />
+          </button>
+        </div>
+
+        {podcastMode && (
+          <div className="rounded-lg border border-accent/20 bg-accent/5 px-4 py-3">
+            <p className="text-xs text-accent">
+              <strong>Podcast Mode enabled:</strong> AI will prioritize clips from the second half of your video where the best insights typically occur. Very high-scoring early clips are still included.
+            </p>
+          </div>
         )}
 
         {/* Analyze button */}

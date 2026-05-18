@@ -30,6 +30,8 @@ type VizardClip = {
   viralScore?: number;
   startTime?: string;
   endTime?: string;
+  startTimeMs?: number;
+  endTimeMs?: number;
   transcript?: string;
   reason?: string;
   caption?: string;
@@ -49,6 +51,8 @@ export default function Home() {
 
   const [errorMessage, setErrorMessage] = useState("");
 
+  // Podcast mode - bias toward later clips for long-form content
+  const [podcastMode, setPodcastMode] = useState(false);
   // History state
   const [historyOpen, setHistoryOpen] = useState(false);
   const [history, setHistory] = useState<HistoryEntry[]>([]);
@@ -494,6 +498,9 @@ export default function Home() {
 
     console.log("[v0] Found", rawClips.length, "raw clips from Vizard");
 
+    // Get total video duration for timeline percentage calculation
+    const videoDurationMs = (d.videoDuration as number) ?? (d.videoMsDuration as number) ?? 0;
+
     // Normalize Vizard API fields into our VizardClip shape
     const normalized: VizardClip[] = rawClips.map((c) => {
       // Safely parse relatedTopic JSON
@@ -520,6 +527,8 @@ export default function Home() {
         viralScore: c.viralScore
           ? Math.round(parseFloat(String(c.viralScore)) * 10)
           : undefined,
+        startTimeMs: (c.startMsTime as number) ?? (c.startTimeMs as number) ?? undefined,
+        endTimeMs: (c.endMsTime as number) ?? (c.endTimeMs as number) ?? undefined,
         transcript: (c.transcript as string) || undefined,
         reason: (c.viralReason as string) || (c.reason as string) || undefined,
         caption: (c.caption as string) || undefined,
@@ -527,7 +536,42 @@ export default function Home() {
       };
     });
 
-    // Sort by viral score desc, take top 4
+    // Podcast Mode: Bias toward later clips (last 50-60% of video)
+    // Still allow early clips if they have very high viral scores (85%+)
+    if (podcastMode && videoDurationMs > 0) {
+      console.log("[v0] Podcast Mode enabled - weighting later clips");
+      
+      const scoredClips = normalized.map((clip) => {
+        const startMs = clip.startTimeMs ?? 0;
+        const timelinePosition = startMs / videoDurationMs; // 0.0 to 1.0
+        const baseScore = clip.viralScore ?? 50;
+        
+        // Timeline weight: clips in second half get bonus
+        // Position 0.0 (start) = 0.6x weight, Position 1.0 (end) = 1.4x weight
+        // Linear interpolation: weight = 0.6 + (0.8 * position)
+        const timelineWeight = 0.6 + (0.8 * timelinePosition);
+        
+        // Exception: Very high viral scores (85%+) from early content still rank well
+        const isHighViral = baseScore >= 85;
+        const effectiveWeight = isHighViral ? Math.max(timelineWeight, 1.0) : timelineWeight;
+        
+        const adjustedScore = Math.round(baseScore * effectiveWeight);
+        
+        return {
+          ...clip,
+          adjustedScore,
+          timelinePosition,
+        };
+      });
+
+      // Sort by adjusted score, take top 6 for podcasts (more variety)
+      return scoredClips
+        .sort((a, b) => b.adjustedScore - a.adjustedScore)
+        .slice(0, 6)
+        .map(({ adjustedScore, timelinePosition, ...clip }) => clip);
+    }
+
+    // Normal mode: Sort by viral score desc, take top 4
     return normalized
       .sort((a, b) => (b.viralScore ?? 0) - (a.viralScore ?? 0))
       .slice(0, 4);
@@ -718,8 +762,10 @@ export default function Home() {
             videoLink={videoLink}
             loading={loading}
             vizardLoading={vizardLoading}
+            podcastMode={podcastMode}
             onFileChange={handleFileChange}
             onLinkChange={handleLinkChange}
+            onPodcastModeChange={setPodcastMode}
             onAnalyze={analyzeContent}
           />
         </motion.div>
