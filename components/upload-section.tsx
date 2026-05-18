@@ -47,7 +47,7 @@ export function UploadSection({
 }: UploadSectionProps) {
   const isProcessing = loading || vizardLoading;
   return (
-    <section className="glass rounded-2xl p-8">
+    <section className="glass card-premium rounded-2xl p-8">
       <div className="flex flex-col gap-1">
         <h2 className="text-xl font-semibold text-foreground">
           Upload or Analyze Podcast
@@ -60,8 +60,8 @@ export function UploadSection({
 
       <div className="mt-6 flex flex-col gap-4">
         {/* File upload area */}
-        <label className="group flex cursor-pointer items-center gap-3 rounded-xl border border-dashed border-border bg-muted/50 px-5 py-4 transition-colors hover:border-accent/50 hover:bg-muted">
-          <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-accent/10 text-accent transition-colors group-hover:bg-accent/20">
+        <label className="group flex cursor-pointer items-center gap-3 rounded-xl border border-dashed border-border bg-muted/30 px-5 py-4 transition-all duration-300 hover:border-accent/50 hover:bg-muted/50 hover:shadow-lg hover:shadow-accent/5">
+          <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-gradient-to-br from-accent/20 to-accent/5 text-accent transition-all duration-300 group-hover:from-accent/30 group-hover:to-accent/10 group-hover:scale-105">
             <Upload className="h-5 w-5" />
           </div>
           <div className="flex-1">
@@ -75,7 +75,7 @@ export function UploadSection({
             </p>
           </div>
           {fileName && (
-            <div className="flex items-center gap-1.5 rounded-full bg-success/10 px-3 py-1 text-xs font-medium text-success">
+            <div className="flex items-center gap-1.5 rounded-full bg-success/10 px-3 py-1.5 text-xs font-semibold text-success shadow-sm shadow-success/10">
               <FileVideo className="h-3.5 w-3.5" />
               Ready
             </div>
@@ -96,14 +96,14 @@ export function UploadSection({
         </div>
 
         {/* URL input */}
-        <div className="relative">
-          <Link className="absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+        <div className="relative group">
+          <Link className="absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground transition-colors group-focus-within:text-accent" />
           <input
             type="url"
             placeholder="Paste YouTube, Drive, or podcast link..."
             value={videoLink}
             onChange={(e) => onLinkChange(e.target.value)}
-            className="w-full rounded-xl border border-border bg-input py-3.5 pl-11 pr-4 text-sm text-foreground outline-none ring-ring transition-all placeholder:text-muted-foreground focus:border-accent/50 focus:ring-2 focus:ring-accent/20"
+            className="input-premium w-full rounded-xl py-3.5 pl-11 pr-4 text-sm text-foreground outline-none ring-ring placeholder:text-muted-foreground focus:border-accent/50 focus:ring-2 focus:ring-accent/20"
           />
         </div>
 
@@ -235,7 +235,7 @@ export function UploadSection({
         <button
           onClick={onAnalyze}
           disabled={isProcessing || (!file && !videoLink.trim())}
-          className="mt-2 flex w-fit items-center gap-2 rounded-xl bg-accent px-6 py-3 text-sm font-semibold text-accent-foreground shadow-lg shadow-accent/20 transition-all hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-50 disabled:shadow-none"
+          className="btn-primary group mt-2 flex w-fit items-center gap-2.5 rounded-xl px-7 py-3.5 text-sm font-semibold text-accent-foreground disabled:cursor-not-allowed disabled:opacity-50 disabled:transform-none disabled:shadow-none"
         >
           {isProcessing ? (
             <>
@@ -244,7 +244,7 @@ export function UploadSection({
             </>
           ) : (
             <>
-              <Sparkles className="h-4 w-4" />
+              <Sparkles className="h-4 w-4 transition-transform duration-300 group-hover:scale-110 group-hover:rotate-12" />
               Generate AI Clip Suggestions
             </>
           )}
