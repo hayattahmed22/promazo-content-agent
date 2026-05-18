@@ -45,6 +45,7 @@ export default function Home() {
   const [loading, setLoading] = useState(false);
   const [vizardLoading, setVizardLoading] = useState(false);
   const [vizardStatus, setVizardStatus] = useState("");
+  const [vizardProgress, setVizardProgress] = useState(0);
   const [clips, setClips] = useState<Clip[]>([]);
   const [vizardClips, setVizardClips] = useState<VizardClip[]>([]);
   const [approvedClips, setApprovedClips] = useState<number[]>([]);
@@ -588,11 +589,13 @@ export default function Home() {
     setCurrentVideoLink(urlToUse);
     setErrorMessage("");
     setVizardLoading(true);
-    setVizardStatus("Submitting video to Vizard...");
+    setVizardProgress(0);
+    setVizardStatus("Uploading video to Vizard...");
     setVizardClips([]);
 
     try {
-      console.log("[v0] Submitting to Vizard:", urlToUse);
+      // Stage 1: Submit video
+      setVizardProgress(5);
 
       const submitResponse = await fetch("/api/vizard", {
         method: "POST",
@@ -605,19 +608,17 @@ export default function Home() {
       });
 
       const submitData = await submitResponse.json();
-      console.log("[v0] Vizard submit response:", submitData);
 
       if (!submitResponse.ok) {
         const errorMsg = submitData.error || "Vizard submit failed.";
-        console.error("[v0] Vizard error:", errorMsg);
         setErrorMessage(errorMsg);
         setVizardStatus("");
         setVizardLoading(false);
+        setVizardProgress(0);
         return;
       }
 
       const projectId = findProjectId(submitData);
-      console.log("[v0] Vizard projectId:", projectId);
 
       if (!projectId) {
         setErrorMessage(
@@ -625,20 +626,48 @@ export default function Home() {
         );
         setVizardStatus("");
         setVizardLoading(false);
+        setVizardProgress(0);
         return;
       }
 
       // Save to history immediately with "processing" status
       saveProjectToHistory(urlToUse, String(projectId), "processing");
 
-      setVizardStatus("Vizard is generating captioned short videos...");
+      // Stage 2: Start polling with optimized intervals
+      setVizardProgress(10);
+      setVizardStatus("Transcribing your podcast...");
 
-      for (let i = 0; i < 30; i++) {
-        setVizardStatus(`Checking Vizard progress... attempt ${i + 1}/30`);
+      // Polling configuration:
+      // - First 5 polls: 10 seconds apart (50 sec total) - quick initial checks
+      // - Next 10 polls: 15 seconds apart (150 sec total) - medium pace
+      // - Remaining polls: 20 seconds apart - long content
+      const MAX_POLLS = 40;
+      let pollCount = 0;
 
-        await new Promise((resolve) => setTimeout(resolve, 30000));
+      const getPollingInterval = (count: number): number => {
+        if (count < 5) return 10000;  // 10 seconds
+        if (count < 15) return 15000; // 15 seconds
+        return 20000; // 20 seconds
+      };
 
-        console.log("[v0] Polling Vizard status, attempt", i + 1);
+      // Progress stages based on poll count
+      const getProgressAndStatus = (count: number): { progress: number; status: string } => {
+        if (count < 3) return { progress: 15 + count * 5, status: "Transcribing your podcast..." };
+        if (count < 6) return { progress: 30 + (count - 3) * 5, status: "Analyzing content for viral moments..." };
+        if (count < 10) return { progress: 45 + (count - 6) * 5, status: "Detecting best clip opportunities..." };
+        if (count < 15) return { progress: 65 + (count - 10) * 3, status: "Generating captions & hooks..." };
+        if (count < 25) return { progress: 80 + (count - 15) * 1, status: "Rendering short-form videos..." };
+        return { progress: 90 + Math.min(count - 25, 8), status: "Finalizing clips..." };
+      };
+
+      while (pollCount < MAX_POLLS) {
+        const interval = getPollingInterval(pollCount);
+        await new Promise((resolve) => setTimeout(resolve, interval));
+
+        pollCount++;
+        const { progress, status } = getProgressAndStatus(pollCount);
+        setVizardProgress(progress);
+        setVizardStatus(status);
 
         const statusResponse = await fetch("/api/vizard/status", {
           method: "POST",
@@ -649,43 +678,47 @@ export default function Home() {
         });
 
         const statusData = await statusResponse.json();
-        console.log("[v0] Vizard status response:", statusData);
 
         // Check for Vizard error codes
         if (statusData.code && statusData.code !== 2000 && statusData.code !== 1000) {
-          console.error("[v0] Vizard error code:", statusData.code, statusData.errMsg);
           setErrorMessage(`Vizard error (${statusData.code}): ${statusData.errMsg || "Unknown error"}`);
           setVizardStatus("");
           setVizardLoading(false);
+          setVizardProgress(0);
           return;
         }
 
         const readyClips = findVizardClips(statusData);
 
+        // STOP IMMEDIATELY when clips are ready
         if (readyClips && readyClips.length > 0) {
-          console.log("[v0] Vizard clips ready:", readyClips.length);
+          setVizardProgress(100);
           setVizardClips(readyClips);
           setVizardStatus("Vizard clips are ready.");
           setVizardLoading(false);
-          // Update the history entry with clips (it was saved earlier with "processing" status)
+          // Update the history entry with clips
           updateHistoryWithClips(
             String(projectId),
             readyClips,
             statusData.projectName
           );
-          return;
+          return; // Exit immediately
         }
       }
 
-      setVizardStatus("Still processing. Try again in a few minutes.");
-      setVizardLoading(false);
-    } catch (error) {
-      console.error("[v0] Vizard error:", error);
+      // Timeout after all polls
       setErrorMessage(
-        `Vizard failed: ${error instanceof Error ? error.message : "Unknown error"}. Check console.`
+        "Vizard is taking longer than expected. Your clips may still be processing - check History later."
       );
       setVizardStatus("");
       setVizardLoading(false);
+      setVizardProgress(0);
+    } catch (error) {
+      console.error("Vizard generation error:", error);
+      setErrorMessage("An error occurred during video generation.");
+      setVizardStatus("");
+      setVizardLoading(false);
+      setVizardProgress(0);
     }
   };
 
@@ -776,6 +809,7 @@ export default function Home() {
             loading={loading}
             vizardLoading={vizardLoading}
             vizardStatus={vizardStatus}
+            vizardProgress={vizardProgress}
             errorMessage={errorMessage}
           />
         </div>
