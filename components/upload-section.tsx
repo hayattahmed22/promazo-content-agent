@@ -135,7 +135,7 @@ export function UploadSection({
           </div>
           
           {/* Direction chips grid */}
-          <div className="relative grid grid-cols-2 gap-2 mb-4">
+          <div className="relative grid grid-cols-2 gap-2.5 mb-4">
             {AI_DIRECTION_PRESETS.map((preset) => {
               const isSelected = aiPrompt === preset.value;
               return (
@@ -143,18 +143,18 @@ export function UploadSection({
                   key={preset.label}
                   type="button"
                   onClick={() => onAiPromptChange(isSelected ? "" : preset.value)}
-                  className={`group/chip relative flex items-center gap-2 rounded-xl px-3 py-2.5 text-left text-sm font-medium transition-all duration-200 ${
+                  className={`group/chip relative flex items-center gap-2.5 rounded-xl px-4 py-3 text-left text-sm font-semibold transition-all duration-250 ${
                     isSelected
-                      ? "bg-accent text-accent-foreground shadow-md shadow-accent/30 scale-[1.02]"
-                      : "bg-muted/60 text-foreground hover:bg-muted hover:shadow-sm hover:scale-[1.01]"
+                      ? "bg-gradient-to-r from-accent to-teal-500 text-white shadow-lg shadow-accent/30 scale-[1.02] ring-2 ring-accent/50 ring-offset-2 ring-offset-background"
+                      : "bg-gradient-to-br from-muted/80 to-muted/40 text-foreground border border-border/50 hover:border-accent/30 hover:bg-muted hover:shadow-md hover:shadow-black/20 hover:scale-[1.02]"
                   }`}
                 >
-                  <span className={`text-base transition-transform duration-200 ${isSelected ? "scale-110" : "group-hover/chip:scale-110"}`}>
+                  <span className={`text-lg transition-all duration-200 ${isSelected ? "scale-110 drop-shadow-sm" : "group-hover/chip:scale-110"}`}>
                     {preset.emoji}
                   </span>
                   <span className="truncate">{preset.label}</span>
                   {isSelected && (
-                    <span className="ml-auto flex h-5 w-5 items-center justify-center rounded-full bg-accent-foreground/20">
+                    <span className="ml-auto flex h-5 w-5 items-center justify-center rounded-full bg-white/20 backdrop-blur-sm">
                       <svg className="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}>
                         <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
                       </svg>
@@ -235,17 +235,20 @@ export function UploadSection({
         <button
           onClick={onAnalyze}
           disabled={isProcessing || (!file && !videoLink.trim())}
-          className="btn-primary group mt-2 flex w-fit items-center gap-2.5 rounded-xl px-7 py-3.5 text-sm font-semibold text-accent-foreground disabled:cursor-not-allowed disabled:opacity-50 disabled:transform-none disabled:shadow-none"
+          className="btn-primary btn-glow shine-effect group mt-4 flex w-full items-center justify-center gap-3 rounded-2xl px-8 py-4 text-base font-bold text-white disabled:cursor-not-allowed disabled:opacity-50 disabled:transform-none disabled:shadow-none sm:w-fit"
         >
           {isProcessing ? (
             <>
-              <Loader2 className="h-4 w-4 animate-spin" />
-              {vizardLoading ? "Processing with Vizard..." : "Analyzing..."}
+              <Loader2 className="h-5 w-5 animate-spin" />
+              <span>{vizardLoading ? "Processing with Vizard..." : "Analyzing..."}</span>
             </>
           ) : (
             <>
-              <Sparkles className="h-4 w-4 transition-transform duration-300 group-hover:scale-110 group-hover:rotate-12" />
-              Generate AI Clip Suggestions
+              <Sparkles className="h-5 w-5 transition-all duration-300 group-hover:scale-125 group-hover:rotate-12" />
+              <span>Generate AI Clip Suggestions</span>
+              <svg className="h-4 w-4 transition-transform duration-300 group-hover:translate-x-1" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M13 7l5 5m0 0l-5 5m5-5H6" />
+              </svg>
             </>
           )}
         </button>
