@@ -9,6 +9,7 @@ The platform leverages advanced Artificial Intelligence, Natural Language Proces
 By combining OpenAI and Vizard technologies, ProMazo Content Agent identifies the most engaging moments within content and automatically converts them into viral-ready short-form videos optimized for modern social media platforms.
 
 ---
+WATCH DEMO: https://drive.google.com/file/d/1Sbkyzcdp6FYTbrQSw5kWoc_4mNwqKaxS/view?usp=drivesdk
 
 ## ✨ Features
 
