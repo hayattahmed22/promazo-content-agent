@@ -114,7 +114,7 @@ These integrations enable ProMazo Content Agent to process long-form podcasts, w
 - Automated Clip Extraction
 - Content Ranking Algorithms
 - AI-Powered Summarization
-
+– RAG
 ### Video Processing
 - Vizard API
 - Automated Video Clipping
